@@ -1,0 +1,5 @@
+generator,max_mw,cost_per_mwh,dispatch_order
+cheap_base,5784.013549999999,25.0,1
+mid_cost,5784.013549999999,50.0,2
+high_cost,5784.013549999999,85.0,3
+peaker,4131.438249999999,150.0,4

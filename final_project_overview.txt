@@ -1,0 +1,855 @@
+CS229 ENERGY LOAD FORECASTING PROJECT — CLEAN PARTNER HANDOFF
+================================================================
+
+PROJECT OVERVIEW
+================
+
+Project title:
+--------------
+Constraint-Aware Dispatch Evaluation of Short-Term Electricity Load Forecasting Models
+
+Core idea:
+----------
+We are using one month of PJM hourly load data from the AEP transmission zone.
+
+The dataset contains four AEP load areas:
+
+1. AEPAPT
+2. AEPIMP
+3. AEPKPT
+4. AEPOPT
+
+Each raw row is one load area's electricity load during one hour.
+
+Example:
+
+    timestamp              zone    load_area    mw
+    ------------------------------------------------
+    Apr 30 4:00 AM         AEP     AEPAPT       3097
+    Apr 30 4:00 AM         AEP     AEPIMP        302
+    Apr 30 4:00 AM         AEP     AEPKPT       1247
+    Apr 30 4:00 AM         AEP     AEPOPT        206
+
+The machine learning task is:
+
+    Predict each load area's MW load 24 hours ahead.
+
+In other words:
+
+    features at time t  --->  load at time t + 24 hours
+
+Example:
+
+    May 1, 3 PM for AEPAPT  --->  predict May 2, 3 PM for AEPAPT
+
+After predicting each of the four load areas, we aggregate the four predictions into one total AEP zone-load prediction.
+
+Then we evaluate:
+
+    1. Which model predicts load most accurately?
+    2. Which model underpredicts or overpredicts total zone demand?
+    3. For the final project, how do these prediction errors affect dispatch cost and reserve-margin needs?
+
+The key final idea is that the best model is not only the one with the lowest RMSE. We also care about whether the model causes under-generation, over-generation, or higher dispatch cost.
+
+
+HIGH-LEVEL PROJECT FORMAT
+=========================
+
+The full project follows this structure:
+
+    Raw PJM hourly load data
+        ↓
+    Clean data
+        ↓
+    Create supervised ML dataset
+        ↓
+    Train several forecasting models
+        ↓
+    Compare forecast accuracy
+        ↓
+    Aggregate load-area predictions to total zone load
+        ↓
+    Compare under-generation and over-generation
+        ↓
+    Run final dispatch / reserve-margin analysis
+        ↓
+    Compare model usefulness for energy-system operation
+
+
+Step 1: Start with raw data
+---------------------------
+Input file:
+
+    data/raw/hrl_load_metered_start.csv
+
+Important raw columns:
+
+    datetime_beginning_utc
+    datetime_beginning_ept
+    zone
+    load_area
+    mw
+    is_verified
+
+Use only the AEP zone.
+
+Each row means:
+
+    load_area a had load_mw at hour t
+
+
+Step 2: Create model examples
+-----------------------------
+The model examples should look like:
+
+    X[a, t] ---> y[a, t]
+
+where:
+
+    X[a, t] = features for load area a at time t
+    y[a, t] = MW load for load area a at time t + 24
+
+Features include:
+
+    load_area
+    hour
+    day_of_week
+    month
+    is_weekend
+    sin_hour
+    cos_hour
+    sin_day_of_week
+    cos_day_of_week
+    current load_mw
+    load_lag_1
+    load_lag_24
+    load_lag_48
+    rolling_mean_24
+    rolling_std_24
+
+For the final project, also add:
+
+    load_lag_168
+    rolling_mean_168
+    rolling_std_168
+
+
+Step 3: Split data
+------------------
+Use a chronological split, not a random split.
+
+Recommended split:
+
+    first 70% of timestamps  = train
+    next 15% of timestamps   = validation
+    final 15% of timestamps  = test
+
+Important:
+
+    Split by timestamp, not by row.
+
+Because each hour has four rows, all four load areas from the same timestamp must stay in the same split.
+
+
+Step 4: Train models
+--------------------
+Milestone models:
+
+    1. Persistence baseline
+    2. Ordinary Least Squares regression
+    3. Ridge regression
+
+Final project models:
+
+    1. Persistence baseline
+    2. Ordinary Least Squares regression
+    3. Ridge regression
+    4. Lasso regression
+    5. Optional tiny neural network
+
+
+Step 5: Compare forecasting models
+----------------------------------
+For each model, compare:
+
+    MAE
+    RMSE
+    MAPE
+    Bias
+
+Bias matters because:
+
+    negative bias = model tends to underpredict
+    positive bias = model tends to overpredict
+
+
+Step 6: Aggregate to zone level
+-------------------------------
+Each model predicts the four load areas separately.
+
+For each target hour:
+
+    predicted_zone_load =
+        predicted_AEPAPT
+      + predicted_AEPIMP
+      + predicted_AEPKPT
+      + predicted_AEPOPT
+
+And:
+
+    true_zone_load =
+        true_AEPAPT
+      + true_AEPIMP
+      + true_AEPKPT
+      + true_AEPOPT
+
+Then calculate:
+
+    under_generation = max(0, true_zone_load - predicted_zone_load)
+
+    over_generation = max(0, predicted_zone_load - true_zone_load)
+
+
+Step 7: Final dispatch and reserve analysis
+-------------------------------------------
+For the final project, create a simple synthetic generator system.
+
+Example generator fleet:
+
+    Generator       Max MW                 Cost
+    ------------------------------------------------
+    Cheap base      35% of max zone load    $25/MWh
+    Mid cost        35% of max zone load    $50/MWh
+    High cost       35% of max zone load    $85/MWh
+    Peaker          25% of max zone load    $150/MWh
+
+For every model's zone-load prediction, dispatch enough generators to meet predicted demand.
+
+Then compare:
+
+    predicted dispatch cost
+    oracle dispatch cost using true demand
+    under-generation
+    over-generation
+    reserve margin needed
+
+The reserve-margin experiment tests:
+
+    predicted_load * (1 + reserve_margin)
+
+using:
+
+    0%
+    1%
+    2%
+    5%
+    10%
+
+
+MORE TECHNICAL OVERVIEW
+=======================
+
+Code structure
+--------------
+Recommended repo structure:
+
+    energy-dispatch-project/
+    |
+    |-- data/
+    |   |-- raw/
+    |       |-- hrl_load_metered_start.csv
+    |
+    |-- src/
+    |   |-- data.py
+    |   |-- features.py
+    |   |-- split.py
+    |   |-- models.py
+    |   |-- evaluate.py
+    |   |-- plots.py
+    |   |-- dispatch.py
+    |   |-- run_milestone.py
+    |   |-- run_final.py
+    |
+    |-- results/
+        |-- milestone/
+        |   |-- metrics/
+        |   |-- predictions/
+        |   |-- figures/
+        |
+        |-- final/
+            |-- metrics/
+            |-- predictions/
+            |-- dispatch/
+            |-- figures/
+
+
+data.py
+-------
+Purpose:
+
+    Load and clean the original CSV.
+
+Main tasks:
+
+    - read CSV
+    - parse datetime_beginning_utc
+    - parse datetime_beginning_ept
+    - filter zone == AEP
+    - rename mw to load_mw
+    - convert load_mw to numeric
+    - drop missing values
+    - drop duplicate timestamp-zone-load_area rows
+    - sort by timestamp and load_area
+
+Output columns:
+
+    timestamp_utc
+    timestamp_ept
+    zone
+    load_area
+    load_mw
+    is_verified
+
+
+features.py
+-----------
+Purpose:
+
+    Build supervised learning features.
+
+Main tasks:
+
+    - add time features
+    - add cyclical features
+    - add lag features
+    - add rolling features
+    - add target column
+
+Target:
+
+    target_load_mw = load_mw shifted -24 within the same load_area
+
+Milestone feature set:
+
+    load_mw
+    load_lag_1
+    load_lag_24
+    load_lag_48
+    rolling_mean_24
+    rolling_std_24
+    time features
+    load_area
+
+Final weekly feature set:
+
+    all milestone features
+    load_lag_168
+    rolling_mean_168
+    rolling_std_168
+
+
+split.py
+--------
+Purpose:
+
+    Split data into train, validation, and test sets by timestamp.
+
+Main tasks:
+
+    - collect sorted unique timestamps
+    - assign first 70% to train
+    - assign next 15% to validation
+    - assign final 15% to test
+    - make sure no timestamp appears in multiple splits
+
+
+models.py
+---------
+Purpose:
+
+    Train and predict with all forecasting models.
+
+Use scikit-learn pipelines.
+
+Categorical feature:
+
+    load_area
+
+Numeric features:
+
+    hour
+    day_of_week
+    month
+    is_weekend
+    sin_hour
+    cos_hour
+    sin_day_of_week
+    cos_day_of_week
+    load_mw
+    load_lag_1
+    load_lag_24
+    load_lag_48
+    rolling_mean_24
+    rolling_std_24
+    load_lag_168, final only
+    rolling_mean_168, final only
+    rolling_std_168, final only
+
+Preprocessing:
+
+    OneHotEncoder for load_area
+    StandardScaler for numeric features
+
+
+Model 0: Persistence baseline
+-----------------------------
+Formula:
+
+    prediction = current load_mw
+
+Why:
+
+    Since target is load at t + 24, current load_mw is the same-hour-yesterday value relative to the target.
+
+Meaning:
+
+    Tomorrow's load at this hour equals today's load at this hour.
+
+Implementation:
+
+    No training needed.
+    Just set y_pred = X["load_mw"].
+
+
+Model 1: Ordinary Least Squares
+-------------------------------
+Model:
+
+    target_load_mw = theta_0 + theta_1*x_1 + ... + theta_n*x_n
+
+Implementation:
+
+    sklearn.linear_model.LinearRegression
+
+Training:
+
+    fit on train set
+
+Testing:
+
+    predict on test set
+
+Purpose:
+
+    Simple linear supervised learning baseline.
+
+
+Model 2: Ridge Regression
+-------------------------
+Model:
+
+    OLS with L2 regularization
+
+Objective:
+
+    MSE + alpha * ||theta||_2^2
+
+Implementation:
+
+    sklearn.linear_model.Ridge
+
+Training:
+
+    train multiple alpha values on train set
+
+Validation:
+
+    choose alpha with lowest validation RMSE
+
+Suggested alpha grid:
+
+    [0.01, 0.1, 1.0, 10.0, 100.0]
+
+Testing:
+
+    evaluate selected ridge model on test set
+
+Purpose:
+
+    Handles correlated load features better than OLS.
+
+
+Model 3: Lasso Regression
+-------------------------
+Final project only.
+
+Model:
+
+    OLS with L1 regularization
+
+Objective:
+
+    MSE + alpha * ||theta||_1
+
+Implementation:
+
+    sklearn.linear_model.Lasso
+
+Suggested alpha grid:
+
+    [0.0001, 0.001, 0.01, 0.1, 1.0]
+
+Purpose:
+
+    Performs feature selection by shrinking less useful coefficients toward zero.
+
+If Lasso has convergence issues:
+
+    use ElasticNet
+
+
+Model 4: Optional tiny neural network
+-------------------------------------
+Final project only, optional.
+
+Implementation:
+
+    sklearn.neural_network.MLPRegressor
+
+Suggested setup:
+
+    hidden_layer_sizes = (16,) or (32,)
+    activation = relu
+    early_stopping = True
+    max_iter = 1000
+
+Purpose:
+
+    Check if a small nonlinear model improves over ridge/lasso.
+
+Warning:
+
+    Dataset is small, so do not make this central.
+
+
+evaluate.py
+-----------
+Purpose:
+
+    Compute metrics and make comparison tables.
+
+Metrics:
+
+    MAE:
+        mean absolute error
+
+    RMSE:
+        root mean squared error
+
+    MAPE:
+        mean absolute percentage error
+
+    Bias:
+        mean(prediction - true)
+
+Create tables:
+
+    forecast_metrics.csv
+    forecast_metrics_by_load_area.csv
+    error_by_hour.csv
+
+
+plots.py
+--------
+Purpose:
+
+    Create figures.
+
+Milestone plots:
+
+    true_vs_predicted_sample.png
+    error_by_hour.png
+
+Final plots:
+
+    forecast_metrics_bar.png
+    error_by_load_area.png
+    zone_true_vs_predicted.png
+    reserve_margin_tradeoff.png
+    cost_vs_reliability.png
+
+
+dispatch.py
+-----------
+Purpose:
+
+    Convert model predictions into zone-level operational metrics.
+
+Main functions:
+
+    aggregate_predictions_to_zone(prediction_df)
+
+    compute_under_over_generation(zone_prediction_df)
+
+    create_generator_fleet(max_zone_load)
+
+    greedy_dispatch(demand_mw, generator_fleet)
+
+    evaluate_dispatch(zone_prediction_df, generator_fleet)
+
+    run_reserve_margin_experiment(...)
+
+Important:
+
+    Aggregate by target timestamp, not the original feature timestamp.
+
+Reason:
+
+    Each row at time t predicts t + 24.
+
+
+Training procedure
+------------------
+For OLS/ridge/lasso:
+
+    1. Build features.
+    2. Split chronologically.
+    3. Fit preprocessing on train only.
+    4. Fit model on train only.
+    5. Use validation set for hyperparameter selection.
+    6. Evaluate final model on test set.
+
+Do not tune using the test set.
+
+
+Testing procedure
+-----------------
+On the test set:
+
+    1. Generate predictions for each model.
+    2. Compare predictions to target_load_mw.
+    3. Save long-format prediction file.
+    4. Compute metrics.
+    5. Aggregate load-area predictions to zone-level.
+    6. Compute under/over-generation.
+
+
+Evaluation procedure
+--------------------
+Forecast-level evaluation:
+
+    MAE
+    RMSE
+    MAPE
+    Bias
+
+Load-area-level evaluation:
+
+    same metrics grouped by load_area
+
+Zone-level evaluation:
+
+    mean zone absolute error
+    under-generation hours
+    under-generation rate
+    total under-generation MW
+    max under-generation MW
+    total over-generation MW
+
+Final dispatch evaluation:
+
+    dispatch cost
+    oracle dispatch cost
+    cost gap
+    reserve-margin tradeoff
+
+
+MILESTONE ONLY
+==============
+
+Milestone goal
+--------------
+Complete the core forecasting pipeline and show preliminary operational relevance.
+
+Milestone should answer:
+
+    Can we use the original PJM AEP load data to train simple models that predict 24-hour-ahead load better than a persistence baseline?
+
+
+Milestone high-level format
+---------------------------
+For the milestone:
+
+    Original CSV
+        ↓
+    Clean AEP data
+        ↓
+    Create short-lag features
+        ↓
+    Split by timestamp
+        ↓
+    Train persistence, OLS, ridge
+        ↓
+    Compare MAE/RMSE/MAPE/bias
+        ↓
+    Plot errors
+        ↓
+    Aggregate predictions to AEP zone load
+        ↓
+    Compute under-generation and over-generation
+
+
+Milestone models
+----------------
+Use only:
+
+    1. Persistence baseline
+    2. OLS
+    3. Ridge
+
+Do not include yet:
+
+    lasso
+    neural network
+    full dispatch
+    reserve margins
+
+
+Milestone features
+------------------
+Use:
+
+    load_area
+    hour
+    day_of_week
+    month
+    is_weekend
+    sin_hour
+    cos_hour
+    sin_day_of_week
+    cos_day_of_week
+    load_mw
+    load_lag_1
+    load_lag_24
+    load_lag_48
+    rolling_mean_24
+    rolling_std_24
+
+Target:
+
+    target_load_mw = load_mw at t + 24 for same load_area
+
+
+Milestone code to write
+-----------------------
+Write these files:
+
+    src/data.py
+    src/features.py
+    src/split.py
+    src/models.py
+    src/evaluate.py
+    src/plots.py
+    src/dispatch.py
+    src/run_milestone.py
+
+Minimum implementation:
+
+    data.py:
+        load and clean original CSV
+
+    features.py:
+        create time, lag, rolling, and target columns
+
+    split.py:
+        chronological split by timestamp
+
+    models.py:
+        persistence, OLS, ridge
+
+    evaluate.py:
+        MAE, RMSE, MAPE, bias
+
+    plots.py:
+        true vs predicted plot
+        error by hour plot
+
+    dispatch.py:
+        aggregate predictions to zone level
+        compute under/over-generation
+
+    run_milestone.py:
+        run everything end-to-end
+
+
+Milestone outputs
+-----------------
+By the milestone, generate:
+
+    results/milestone/metrics/forecast_metrics.csv
+    results/milestone/metrics/forecast_metrics_by_load_area.csv
+    results/milestone/metrics/zone_under_over_generation.csv
+    results/milestone/predictions/test_predictions.csv
+    results/milestone/figures/true_vs_predicted_sample.png
+    results/milestone/figures/error_by_hour.png
+
+
+Milestone forecast metrics table
+--------------------------------
+Should look like:
+
+    model          MAE       RMSE      MAPE      Bias
+    --------------------------------------------------
+    Persistence    ...       ...       ...       ...
+    OLS            ...       ...       ...       ...
+    Ridge          ...       ...       ...       ...
+
+
+Milestone operational table
+---------------------------
+Should look like:
+
+    model          under_generation_hours    total_under_generation    total_over_generation
+    ----------------------------------------------------------------------------------------
+    Persistence    ...                       ...                       ...
+    OLS            ...                       ...                       ...
+    Ridge          ...                       ...                       ...
+
+
+Milestone plots
+---------------
+Required:
+
+    1. true_vs_predicted_sample.png
+        Actual vs persistence vs OLS vs ridge for one load area over a few test days.
+
+    2. error_by_hour.png
+        Average absolute error by hour of day for each model.
+
+
+Milestone completion checklist
+------------------------------
+Before milestone submission:
+
+    [ ] Original CSV loads correctly.
+    [ ] Data is filtered to AEP.
+    [ ] Four load areas are present.
+    [ ] Duplicates are removed.
+    [ ] Feature rows are created.
+    [ ] Target is 24-hour-ahead load.
+    [ ] Split is chronological.
+    [ ] Persistence baseline works.
+    [ ] OLS works.
+    [ ] Ridge works and alpha is selected by validation RMSE.
+    [ ] Metrics are saved.
+    [ ] Predictions are saved.
+    [ ] Plots are saved.
+    [ ] Zone-level under/over-generation is computed.
+
+
+MILESTONE REPORT CONTEXT
+------------------------
+The milestone report can say:
+
+    We use one month of PJM hourly metered load data from the AEP transmission zone. The data contains four load areas, with each row representing MW load for one load area at one hour. We formulate a 24-hour-ahead supervised learning problem by creating lagged load features and calendar features at time t and predicting load at time t+24. We compare a persistence baseline, OLS regression, and ridge regression using a chronological train/validation/test split. Preliminary evaluation uses MAE, RMSE, MAPE, and bias. We also aggregate load-area predictions to total AEP zone load to compute early under-generation and over-generation metrics.
