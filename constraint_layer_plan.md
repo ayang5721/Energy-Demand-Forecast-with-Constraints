@@ -42,12 +42,12 @@ Ridge
 It already produces pre-constraint forecast results such as:
 
 ```text
-results/milestone/metrics/forecast_metrics.csv
-results/milestone/metrics/forecast_metrics_by_load_area.csv
-results/milestone/metrics/error_by_hour.csv
-results/milestone/predictions/test_predictions.csv
-results/milestone/figures/true_vs_predicted_sample.png
-results/milestone/figures/error_by_hour.png
+results/milestone/metrics/pre_constraint_layer_forecast_metrics.csv
+results/milestone/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv
+results/milestone/metrics/pre_constraint_layer_error_by_hour.csv
+results/milestone/predictions/pre_constraint_layer_test_predictions.csv
+results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
+results/milestone/figures/pre_constraint_layer_error_by_hour.png
 ```
 
 These should now be renamed or additionally saved with the prefix:
@@ -63,7 +63,7 @@ results/milestone/metrics/pre_constraint_layer_forecast_metrics.csv
 results/milestone/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv
 results/milestone/metrics/pre_constraint_layer_error_by_hour.csv
 results/milestone/predictions/pre_constraint_layer_test_predictions.csv
-results/milestone/figures/pre_constraint_layer_true_vs_predicted_sample.png
+results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
 results/milestone/figures/pre_constraint_layer_error_by_hour.png
 ```
 
@@ -580,7 +580,7 @@ for pure forecasting results.
 For example:
 
 ```text
-forecast_metrics.csv
+pre_constraint_layer_forecast_metrics.csv
 ```
 
 should also be saved as:
@@ -592,7 +592,7 @@ pre_constraint_layer_forecast_metrics.csv
 Similarly:
 
 ```text
-test_predictions.csv
+pre_constraint_layer_test_predictions.csv
 ```
 
 should also be saved as:
@@ -614,7 +614,7 @@ post_constraint_layer_
 After running:
 
 ```bash
-python src/run_milestone.py
+python3 src/run_milestone.py
 ```
 
 the repo should create these files.
@@ -629,7 +629,7 @@ results/milestone/metrics/pre_constraint_layer_error_by_hour.csv
 results/milestone/predictions/pre_constraint_layer_test_predictions.csv
 results/milestone/predictions/pre_constraint_layer_zone_predictions.csv
 
-results/milestone/figures/pre_constraint_layer_true_vs_predicted_sample.png
+results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
 results/milestone/figures/pre_constraint_layer_error_by_hour.png
 ```
 

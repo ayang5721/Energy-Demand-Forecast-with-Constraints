@@ -141,7 +141,6 @@ pandas
 numpy
 scikit-learn
 matplotlib
-pyyaml
 ```
 
 No paid API or external data is needed.
@@ -797,34 +796,23 @@ Important:
 Group by target_timestamp_utc, not timestamp_utc.
 ```
 
-### `add_under_over_generation(zone_df: pd.DataFrame) -> pd.DataFrame`
+### Post-constraint dispatch metrics
 
-Add:
-
-```text
-zone_error_mw = predicted_zone_load_mw - true_zone_load_mw
-zone_abs_error_mw = abs(zone_error_mw)
-under_generation_mw = max(0, true_zone_load_mw - predicted_zone_load_mw)
-over_generation_mw = max(0, predicted_zone_load_mw - true_zone_load_mw)
-```
-
-### `make_operational_metrics(zone_df: pd.DataFrame) -> pd.DataFrame`
-
-Group by `model`.
-
-Compute:
+Use `create_generator_fleet`, `run_constrained_dispatch`, and
+`make_post_constraint_metrics` to compute:
 
 ```text
 n_hours
+feasible_hours
+infeasible_hours
 under_generation_hours
 under_generation_rate
 total_under_generation_mw
 max_under_generation_mw
 total_over_generation_mw
 max_over_generation_mw
-mean_zone_abs_error_mw
-rmse_zone_error_mw
-bias_zone_error_mw
+total_dispatch_cost
+total_cost_gap
 ```
 
 ---
@@ -841,7 +829,7 @@ Do not use seaborn.
 
 ## Required functions
 
-### `plot_true_vs_predicted_sample(predictions_df, output_path, load_area=None, max_points=96)`
+### `plot_true_vs_predicted_load_area(predictions_df, output_path, load_area=None, max_points=96)`
 
 Behavior:
 
@@ -896,7 +884,7 @@ Run the entire milestone pipeline from one command.
 Command:
 
 ```bash
-python src/run_milestone.py
+python3 src/run_milestone.py
 ```
 
 ## Constants
@@ -996,7 +984,7 @@ ridge_test_pred = best_ridge_model.predict(X_test)
 Save ridge validation results to:
 
 ```text
-results/milestone/metrics/ridge_validation_results.csv
+results/milestone/metrics/pre_constraint_layer_ridge_validation_results.csv
 ```
 
 ### Step 9: Build long-format predictions dataframe
@@ -1033,7 +1021,7 @@ Ridge
 Save to:
 
 ```text
-results/milestone/predictions/test_predictions.csv
+results/milestone/predictions/pre_constraint_layer_test_predictions.csv
 ```
 
 ### Step 10: Calculate forecast metrics
@@ -1041,9 +1029,9 @@ results/milestone/predictions/test_predictions.csv
 Create and save:
 
 ```text
-results/milestone/metrics/forecast_metrics.csv
-results/milestone/metrics/forecast_metrics_by_load_area.csv
-results/milestone/metrics/error_by_hour.csv
+results/milestone/metrics/pre_constraint_layer_forecast_metrics.csv
+results/milestone/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv
+results/milestone/metrics/pre_constraint_layer_error_by_hour.csv
 ```
 
 ### Step 11: Create plots
@@ -1051,9 +1039,9 @@ results/milestone/metrics/error_by_hour.csv
 Save:
 
 ```text
-results/milestone/figures/true_vs_predicted_sample.png
-results/milestone/figures/error_by_hour.png
-results/milestone/figures/rmse_by_model.png
+results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
+results/milestone/figures/pre_constraint_layer_error_by_hour.png
+results/milestone/figures/pre_constraint_layer_rmse_by_model.png
 ```
 
 The third plot is optional but useful.
@@ -1063,21 +1051,21 @@ The third plot is optional but useful.
 Call:
 
 ```text
-aggregate_to_zone
-add_under_over_generation
-make_operational_metrics
+aggregate_predictions_to_zone
+run_constrained_dispatch
+make_post_constraint_metrics
 ```
 
 Save hourly zone predictions to:
 
 ```text
-results/milestone/predictions/zone_predictions.csv
+results/milestone/predictions/pre_constraint_layer_zone_predictions.csv
 ```
 
 Save metrics to:
 
 ```text
-results/milestone/metrics/zone_under_over_generation.csv
+results/milestone/metrics/post_constraint_layer_dispatch_metrics.csv
 ```
 
 ### Step 13: Print final summary
@@ -1101,24 +1089,30 @@ Paths of saved outputs
 After running:
 
 ```bash
-python src/run_milestone.py
+python3 src/run_milestone.py
 ```
 
 the repo should contain:
 
 ```text
-results/milestone/metrics/forecast_metrics.csv
-results/milestone/metrics/forecast_metrics_by_load_area.csv
-results/milestone/metrics/error_by_hour.csv
-results/milestone/metrics/ridge_validation_results.csv
-results/milestone/metrics/zone_under_over_generation.csv
+results/milestone/metrics/pre_constraint_layer_forecast_metrics.csv
+results/milestone/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv
+results/milestone/metrics/pre_constraint_layer_error_by_hour.csv
+results/milestone/metrics/pre_constraint_layer_ridge_validation_results.csv
+results/milestone/metrics/post_constraint_layer_generator_fleet.csv
+results/milestone/metrics/post_constraint_layer_dispatch_metrics.csv
+results/milestone/metrics/pre_post_constraint_layer_summary.csv
 
-results/milestone/predictions/test_predictions.csv
-results/milestone/predictions/zone_predictions.csv
+results/milestone/predictions/pre_constraint_layer_test_predictions.csv
+results/milestone/predictions/pre_constraint_layer_zone_predictions.csv
+results/milestone/predictions/post_constraint_layer_dispatch_hourly.csv
 
-results/milestone/figures/true_vs_predicted_sample.png
-results/milestone/figures/error_by_hour.png
-results/milestone/figures/rmse_by_model.png
+results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
+results/milestone/figures/pre_constraint_layer_error_by_hour.png
+results/milestone/figures/pre_constraint_layer_rmse_by_model.png
+results/milestone/figures/post_constraint_layer_dispatch_cost_by_model.png
+results/milestone/figures/post_constraint_layer_under_generation_by_model.png
+results/milestone/figures/post_constraint_layer_scheduled_vs_true_zone_load.png
 ```
 
 ---
@@ -1136,7 +1130,7 @@ Requirements:
 4. Never modify the raw CSV.
 5. Save all outputs under results/milestone.
 6. Keep the milestone focused; do not implement final-only models.
-7. Make the pipeline runnable from repo root with python src/run_milestone.py.
+7. Make the pipeline runnable from repo root with python3 src/run_milestone.py.
 ```
 
 ---
@@ -1151,8 +1145,8 @@ unique timestamps = 720
 load areas = 4
 feature rows ≈ 2592
 models = Persistence, OLS, Ridge
-test_predictions.csv has 3 × number_of_test_rows rows
-zone_predictions.csv has 3 × number_of_test_timestamps rows
+pre_constraint_layer_test_predictions.csv has 3 × number_of_test_rows rows
+pre_constraint_layer_zone_predictions.csv has 3 × number_of_test_timestamps rows
 ```
 
 If feature rows are not exactly 2592, print why. Small deviations are acceptable if there are missing/duplicate timestamps, but this dataset should likely produce 2592.

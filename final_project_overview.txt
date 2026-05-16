@@ -555,9 +555,9 @@ Metrics:
 
 Create tables:
 
-    forecast_metrics.csv
-    forecast_metrics_by_load_area.csv
-    error_by_hour.csv
+    pre_constraint_layer_forecast_metrics.csv
+    pre_constraint_layer_forecast_metrics_by_load_area.csv
+    pre_constraint_layer_error_by_hour.csv
 
 
 plots.py
@@ -568,8 +568,8 @@ Purpose:
 
 Milestone plots:
 
-    true_vs_predicted_sample.png
-    error_by_hour.png
+    pre_constraint_layer_true_vs_predicted_average_load_area.png
+    pre_constraint_layer_error_by_hour.png
 
 Final plots:
 
@@ -787,11 +787,11 @@ Milestone outputs
 -----------------
 By the milestone, generate:
 
-    results/milestone/metrics/forecast_metrics.csv
-    results/milestone/metrics/forecast_metrics_by_load_area.csv
-    results/milestone/metrics/zone_under_over_generation.csv
-    results/milestone/predictions/test_predictions.csv
-    results/milestone/figures/true_vs_predicted_sample.png
+    results/milestone/metrics/pre_constraint_layer_forecast_metrics.csv
+    results/milestone/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv
+    results/milestone/metrics/post_constraint_layer_dispatch_metrics.csv
+    results/milestone/predictions/pre_constraint_layer_test_predictions.csv
+    results/milestone/figures/pre_constraint_layer_true_vs_predicted_average_load_area.png
     results/milestone/figures/error_by_hour.png
 
 
@@ -821,7 +821,7 @@ Milestone plots
 ---------------
 Required:
 
-    1. true_vs_predicted_sample.png
+    1. pre_constraint_layer_true_vs_predicted_average_load_area.png
         Actual vs persistence vs OLS vs ridge for one load area over a few test days.
 
     2. error_by_hour.png
