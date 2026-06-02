@@ -491,6 +491,8 @@ These plots show forecast accuracy before dispatch constraints are applied.
 
 ![Pre-Constraint RMSE by Model](results/milestone/figures/pre_constraint_layer_rmse_by_model.png)
 
+![Pre-Constraint MAPE by Model](results/milestone/figures/pre_constraint_layer_mape_by_model.png)
+
 ### Post-Constraint Layer
 
 These plots show what happens after model forecasts are used to schedule generation.
