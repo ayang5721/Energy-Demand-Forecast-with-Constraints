@@ -8,7 +8,7 @@ import pandas as pd
 def aggregate_to_zone(predictions_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate load-area forecasts into zone-level forecasts by target timestamp."""
     return (
-        predictions_df.groupby(["target_timestamp_utc", "target_timestamp_ept", "model"], sort=False)
+        predictions_df.groupby(["target_timestamp_utc", "target_timestamp_ept", "zone", "model"], sort=False)
         .agg(
             true_zone_load_mw=("true_load_mw", "sum"),
             predicted_zone_load_mw=("predicted_load_mw", "sum"),

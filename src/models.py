@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.linear_model import LassoLars, LinearRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from evaluate import rmse
 
 
-CATEGORICAL_COLUMNS = ["load_area"]
+CATEGORICAL_COLUMNS = ["zone", "load_area"]
 NUMERIC_COLUMNS = [
     "hour",
     "day_of_week",
@@ -68,6 +71,19 @@ def train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols) -> Pipe
     return model.fit(X_train, y_train)
 
 
+def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> Pipeline:
+    """Train a Lasso regression pipeline."""
+    model = Pipeline(
+        steps=[
+            ("preprocessor", get_preprocessor(categorical_cols, numeric_cols)),
+            ("model", LassoLars(alpha=alpha, max_iter=500)),
+        ]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        return model.fit(X_train, y_train)
+
+
 def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
     """Tune Ridge alpha by validation RMSE and return the best fitted model."""
     rows = []
@@ -76,6 +92,24 @@ def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, num
     best_rmse = np.inf
     for alpha in alpha_grid:
         model = train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols)
+        pred = model.predict(X_val)
+        val_rmse = rmse(y_val, pred)
+        rows.append({"alpha": alpha, "validation_rmse": val_rmse})
+        if val_rmse < best_rmse:
+            best_rmse = val_rmse
+            best_alpha = alpha
+            best_model = model
+    return best_model, best_alpha, pd.DataFrame(rows)
+
+
+def tune_lasso(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
+    """Tune Lasso alpha by validation RMSE and return the best fitted model."""
+    rows = []
+    best_model = None
+    best_alpha = None
+    best_rmse = np.inf
+    for alpha in alpha_grid:
+        model = train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols)
         pred = model.predict(X_val)
         val_rmse = rmse(y_val, pred)
         rows.append({"alpha": alpha, "validation_rmse": val_rmse})

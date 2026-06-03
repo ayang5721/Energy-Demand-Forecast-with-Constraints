@@ -50,7 +50,7 @@ Important files:
 - `src/operational.py`: aggregates load-area predictions to zone-level forecasts.
 - `src/constraints.py`: creates the synthetic generator fleet and runs constrained dispatch.
 - `src/plots.py`: creates the pre-constraint and post-constraint figures.
-- `src/run_milestone.py`: runs the full pipeline.
+- `src/run.py`: runs the full pipeline.
 
 The generated outputs are in:
 
@@ -490,6 +490,8 @@ These plots show forecast accuracy before dispatch constraints are applied.
 ![Pre-Constraint Error by Hour](results/milestone/figures/pre_constraint_layer_error_by_hour.png)
 
 ![Pre-Constraint RMSE by Model](results/milestone/figures/pre_constraint_layer_rmse_by_model.png)
+
+![Pre-Constraint MAPE by Model](results/milestone/figures/pre_constraint_layer_mape_by_model.png)
 
 ### Post-Constraint Layer
 

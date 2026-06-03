@@ -5,9 +5,6 @@ from __future__ import annotations
 import pandas as pd
 
 
-EXPECTED_LOAD_AREAS = ["AEPAPT", "AEPIMP", "AEPKPT", "AEPOPT"]
-
-
 def load_raw_data(path: str) -> pd.DataFrame:
     """Read the raw PJM CSV from disk."""
     return pd.read_csv(path)
@@ -48,10 +45,9 @@ def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
         if col in cleaned.columns:
             cleaned[col] = cleaned[col].astype(str).str.strip()
 
-    cleaned = cleaned[cleaned["zone"] == "AEP"]
     cleaned = cleaned.dropna(subset=["timestamp_utc", "timestamp_ept", "load_area", "zone", "load_mw"])
     cleaned = cleaned.drop_duplicates(subset=["timestamp_utc", "zone", "load_area"])
-    cleaned = cleaned.sort_values(["timestamp_utc", "load_area"]).reset_index(drop=True)
+    cleaned = cleaned.sort_values(["timestamp_utc", "zone", "load_area"]).reset_index(drop=True)
 
     columns = [
         "timestamp_utc",
@@ -74,7 +70,9 @@ def validate_clean_data(df: pd.DataFrame) -> dict:
         "n_unique_timestamps": int(df["timestamp_utc"].nunique()),
         "zone_values": sorted(df["zone"].dropna().unique().tolist()),
         "load_area_values": sorted(df["load_area"].dropna().unique().tolist()),
+        "rows_per_zone": df.groupby("zone").size().to_dict(),
         "rows_per_load_area": df.groupby("load_area").size().to_dict(),
+        "rows_per_zone_load_area": df.groupby(["zone", "load_area"]).size().to_dict(),
         "min_timestamp_utc": df["timestamp_utc"].min(),
         "max_timestamp_utc": df["timestamp_utc"].max(),
         "all_verified": bool(df["is_verified"].fillna(False).all()),
@@ -87,19 +85,15 @@ def validate_clean_data(df: pd.DataFrame) -> dict:
     print(f"Unique timestamps: {summary['n_unique_timestamps']}")
     print(f"Zones: {summary['zone_values']}")
     print(f"Load areas: {summary['load_area_values']}")
+    print(f"Rows per zone: {summary['rows_per_zone']}")
     print(f"Rows per load area: {summary['rows_per_load_area']}")
     print(f"UTC range: {summary['min_timestamp_utc']} to {summary['max_timestamp_utc']}")
     print(f"All verified: {summary['all_verified']}")
     print(f"Duplicates after cleaning: {summary['duplicate_count_after_cleaning']}")
 
-    expected_rows_per_area = {area: 720 for area in EXPECTED_LOAD_AREAS}
     checks = [
-        (summary["n_rows"] == 2880, "Expected 2880 cleaned rows."),
-        (summary["n_unique_timestamps"] == 720, "Expected 720 unique timestamps."),
-        (summary["zone_values"] == ["AEP"], "Expected only AEP zone."),
-        (summary["load_area_values"] == EXPECTED_LOAD_AREAS, "Expected four known AEP load areas."),
-        (summary["rows_per_load_area"] == expected_rows_per_area, "Expected 720 rows per load area."),
         (summary["all_verified"], "Expected all rows to be verified."),
+        (summary["duplicate_count_after_cleaning"] == 0, "Expected no duplicate zone/load-area timestamps."),
     ]
     for ok, message in checks:
         if not ok:
