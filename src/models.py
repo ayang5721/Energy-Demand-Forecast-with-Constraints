@@ -36,7 +36,7 @@ def _soft_threshold(value: float, penalty: float) -> float:
     return 0.0
 
 
-class ExplicitPreprocessor:
+class ModelPreprocessor:
     """One-hot encode categorical columns and standardize numeric columns."""
 
     def __init__(self, categorical_cols, numeric_cols):
@@ -71,7 +71,7 @@ class ExplicitPreprocessor:
         return self.fit(X).transform(X)
 
 
-class ExplicitLinearModel:
+class LinearModel:
     """Linear regression model with explicit OLS, Ridge, and Lasso training."""
 
     def __init__(
@@ -87,7 +87,7 @@ class ExplicitLinearModel:
         self.alpha = float(alpha)
         self.max_iter = int(max_iter)
         self.tol = float(tol)
-        self.preprocessor = ExplicitPreprocessor(categorical_cols, numeric_cols)
+        self.preprocessor = ModelPreprocessor(categorical_cols, numeric_cols)
         self.intercept_ = 0.0
         self.coef_ = None
         self.n_iter_ = 0
@@ -166,9 +166,9 @@ class ExplicitLinearModel:
         self.coef_ = coef
 
 
-def get_preprocessor(categorical_cols, numeric_cols) -> ExplicitPreprocessor:
-    """Return the explicit project preprocessor."""
-    return ExplicitPreprocessor(categorical_cols, numeric_cols)
+def get_preprocessor(categorical_cols, numeric_cols) -> ModelPreprocessor:
+    """Return the project preprocessor."""
+    return ModelPreprocessor(categorical_cols, numeric_cols)
 
 
 def predict_persistence(X: pd.DataFrame) -> np.ndarray:
@@ -176,21 +176,21 @@ def predict_persistence(X: pd.DataFrame) -> np.ndarray:
     return X["load_mw"].to_numpy()
 
 
-def train_ols(X_train, y_train, categorical_cols, numeric_cols) -> ExplicitLinearModel:
+def train_ols(X_train, y_train, categorical_cols, numeric_cols) -> LinearModel:
     """Train ordinary least squares with the normal equation."""
-    model = ExplicitLinearModel("ols", categorical_cols, numeric_cols)
+    model = LinearModel("ols", categorical_cols, numeric_cols)
     return model.fit(X_train, y_train)
 
 
-def train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols) -> ExplicitLinearModel:
+def train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols) -> LinearModel:
     """Train Ridge regression with explicit L2-regularized least squares."""
-    model = ExplicitLinearModel("ridge", categorical_cols, numeric_cols, alpha=alpha)
+    model = LinearModel("ridge", categorical_cols, numeric_cols, alpha=alpha)
     return model.fit(X_train, y_train)
 
 
-def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> ExplicitLinearModel:
+def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> LinearModel:
     """Train Lasso regression with explicit coordinate descent."""
-    model = ExplicitLinearModel("lasso", categorical_cols, numeric_cols, alpha=alpha, max_iter=500)
+    model = LinearModel("lasso", categorical_cols, numeric_cols, alpha=alpha, max_iter=500)
     return model.fit(X_train, y_train)
 
 
