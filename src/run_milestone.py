@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from constraints import create_generator_fleet, make_post_constraint_metrics, run_constrained_dispatch
+from constraints import (
+    create_generator_fleet,
+    make_post_constraint_metrics,
+    run_constrained_dispatch,
+    validate_constraint_costs,
+)
 from data import clean_pjm_data, load_raw_data, validate_clean_data
 from evaluate import make_error_by_hour, make_metrics_by_load_area, make_metrics_table
 from features import make_feature_dataset
@@ -15,8 +20,13 @@ from operational import aggregate_predictions_to_zone
 from plots import (
     plot_error_by_hour,
     plot_forecast_metrics_bar,
-    plot_post_constraint_dispatch_cost,
+    plot_post_constraint_base_generator_cost,
+    plot_post_constraint_constraint_regret,
+    plot_post_constraint_over_generation,
+    plot_post_constraint_penalty_cost,
+    plot_post_constraint_penalty_cost_stacked,
     plot_post_constraint_scheduled_vs_true,
+    plot_post_constraint_total_operational_cost,
     plot_post_constraint_under_generation,
     plot_true_vs_predicted_average,
     plot_true_vs_predicted_load_area,
@@ -152,7 +162,9 @@ def main() -> None:
     error_by_hour.to_csv(dirs["metrics"] / "pre_constraint_layer_error_by_hour.csv", index=False)
 
     print("Generating pre-constraint plots...")
-    load_area_figures_dir = dirs["figures"] / "pre_constraint_layer_true_vs_predicted_by_load_area"
+    pre_constraint_load_area_dir = dirs["figures"] / "pre_constraint_load_area"
+    pre_constraint_error_dir = dirs["figures"] / "pre_constraint_error"
+    post_constraint_analysis_dir = dirs["figures"] / "post_constraint_analysis"
     for row in (
         predictions[["zone", "load_area"]]
         .drop_duplicates()
@@ -161,18 +173,18 @@ def main() -> None:
     ):
         plot_true_vs_predicted_load_area(
             predictions,
-            load_area_figures_dir
+            pre_constraint_load_area_dir
             / f"pre_constraint_layer_true_vs_predicted_{_safe_filename(row.zone)}_{_safe_filename(row.load_area)}.png",
             zone=row.zone,
             load_area=row.load_area,
         )
     plot_true_vs_predicted_average(
         predictions,
-        dirs["figures"] / "pre_constraint_layer_true_vs_predicted_average_load_area.png",
+        pre_constraint_load_area_dir / "pre_constraint_layer_true_vs_predicted_average_load_area.png",
     )
-    plot_error_by_hour(error_by_hour, dirs["figures"] / "pre_constraint_layer_error_by_hour.png")
-    plot_forecast_metrics_bar(metrics, dirs["figures"] / "pre_constraint_layer_rmse_by_model.png", metric="rmse")
-    plot_forecast_metrics_bar(metrics, dirs["figures"] / "pre_constraint_layer_mape_by_model.png", metric="mape")
+    plot_error_by_hour(error_by_hour, pre_constraint_error_dir / "pre_constraint_layer_error_by_hour.png")
+    plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_rmse_by_model.png", metric="rmse")
+    plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_mape_by_model.png", metric="mape")
 
     print("Aggregating load-area forecasts to zones...")
     pre_constraint_zone_predictions = aggregate_predictions_to_zone(predictions)
@@ -187,6 +199,7 @@ def main() -> None:
     print("Running post-constraint dispatch...")
     dispatch_hourly = run_constrained_dispatch(pre_constraint_zone_predictions, generator_fleet)
     post_constraint_metrics = make_post_constraint_metrics(dispatch_hourly)
+    validate_constraint_costs(dispatch_hourly, post_constraint_metrics)
     print("Saving post-constraint dispatch outputs...")
     dispatch_hourly.to_csv(dirs["predictions"] / "post_constraint_layer_dispatch_hourly.csv", index=False)
     post_constraint_metrics.to_csv(dirs["metrics"] / "post_constraint_layer_dispatch_metrics.csv", index=False)
@@ -196,10 +209,13 @@ def main() -> None:
             [
                 "model",
                 "under_generation_rate",
-                "total_under_generation_mw",
-                "total_over_generation_mw",
-                "total_dispatch_cost",
-                "total_cost_gap",
+                "over_generation_rate",
+                "total_under_generation_mwh",
+                "total_over_generation_mwh",
+                "total_base_generator_cost",
+                "total_penalty_cost",
+                "total_operational_cost",
+                "total_constraint_regret",
             ]
         ],
         on="model",
@@ -211,10 +227,13 @@ def main() -> None:
             "mape": "pre_constraint_layer_mape",
             "bias": "pre_constraint_layer_bias",
             "under_generation_rate": "post_constraint_layer_under_generation_rate",
-            "total_under_generation_mw": "post_constraint_layer_total_under_generation_mw",
-            "total_over_generation_mw": "post_constraint_layer_total_over_generation_mw",
-            "total_dispatch_cost": "post_constraint_layer_total_dispatch_cost",
-            "total_cost_gap": "post_constraint_layer_total_cost_gap",
+            "over_generation_rate": "post_constraint_layer_over_generation_rate",
+            "total_under_generation_mwh": "post_constraint_layer_total_under_generation_mwh",
+            "total_over_generation_mwh": "post_constraint_layer_total_over_generation_mwh",
+            "total_base_generator_cost": "post_constraint_layer_total_base_generator_cost",
+            "total_penalty_cost": "post_constraint_layer_total_penalty_cost",
+            "total_operational_cost": "post_constraint_layer_total_operational_cost",
+            "total_constraint_regret": "post_constraint_layer_total_constraint_regret",
         }
     )
     pre_post_summary = pre_post_summary[
@@ -225,26 +244,49 @@ def main() -> None:
             "pre_constraint_layer_mape",
             "pre_constraint_layer_bias",
             "post_constraint_layer_under_generation_rate",
-            "post_constraint_layer_total_under_generation_mw",
-            "post_constraint_layer_total_over_generation_mw",
-            "post_constraint_layer_total_dispatch_cost",
-            "post_constraint_layer_total_cost_gap",
+            "post_constraint_layer_over_generation_rate",
+            "post_constraint_layer_total_under_generation_mwh",
+            "post_constraint_layer_total_over_generation_mwh",
+            "post_constraint_layer_total_base_generator_cost",
+            "post_constraint_layer_total_penalty_cost",
+            "post_constraint_layer_total_operational_cost",
+            "post_constraint_layer_total_constraint_regret",
         ]
     ]
     pre_post_summary.to_csv(dirs["metrics"] / "pre_post_constraint_layer_summary.csv", index=False)
 
     print("Generating post-constraint plots...")
-    plot_post_constraint_dispatch_cost(
+    plot_post_constraint_base_generator_cost(
         post_constraint_metrics,
-        dirs["figures"] / "post_constraint_layer_dispatch_cost_by_model.png",
+        post_constraint_analysis_dir / "post_constraint_layer_base_generator_cost_by_model.png",
     )
     plot_post_constraint_under_generation(
         post_constraint_metrics,
-        dirs["figures"] / "post_constraint_layer_under_generation_by_model.png",
+        post_constraint_analysis_dir / "post_constraint_layer_under_generation_by_model.png",
+    )
+    plot_post_constraint_over_generation(
+        post_constraint_metrics,
+        post_constraint_analysis_dir / "post_constraint_layer_over_generation_by_model.png",
+    )
+    plot_post_constraint_penalty_cost(
+        post_constraint_metrics,
+        post_constraint_analysis_dir / "post_constraint_layer_penalty_cost_by_model.png",
+    )
+    plot_post_constraint_penalty_cost_stacked(
+        post_constraint_metrics,
+        post_constraint_analysis_dir / "post_constraint_layer_penalty_cost_stacked_by_model.png",
+    )
+    plot_post_constraint_total_operational_cost(
+        post_constraint_metrics,
+        post_constraint_analysis_dir / "post_constraint_layer_total_operational_cost_by_model.png",
+    )
+    plot_post_constraint_constraint_regret(
+        post_constraint_metrics,
+        post_constraint_analysis_dir / "post_constraint_layer_constraint_regret_by_model.png",
     )
     plot_post_constraint_scheduled_vs_true(
         dispatch_hourly,
-        dirs["figures"] / "post_constraint_layer_scheduled_vs_true_zone_load.png",
+        post_constraint_analysis_dir / "post_constraint_layer_scheduled_vs_true_zone_load.png",
     )
 
     print("\nMilestone summary")

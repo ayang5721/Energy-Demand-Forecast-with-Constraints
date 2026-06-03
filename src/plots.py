@@ -174,34 +174,119 @@ def plot_forecast_metrics_bar(metrics_df: pd.DataFrame, output_path, metric="rms
     plt.close()
 
 
-def plot_post_constraint_dispatch_cost(post_metrics_df: pd.DataFrame, output_path) -> None:
-    """Plot post-constraint total dispatch cost by model."""
-    ordered = post_metrics_df.sort_values("total_dispatch_cost")
+def _plot_post_constraint_metric_bar(
+    post_metrics_df: pd.DataFrame,
+    output_path,
+    metric: str,
+    ylabel: str,
+    title: str,
+) -> None:
+    """Plot one post-constraint metric by model."""
+    ordered = post_metrics_df.sort_values(metric)
     plt.figure(figsize=(8, 5))
     colors = [MODEL_STYLES.get(model, {}).get("color", "#777777") for model in ordered["model"]]
-    plt.bar(ordered["model"], ordered["total_dispatch_cost"], color=colors)
+    plt.bar(ordered["model"], ordered[metric], color=colors)
     plt.xlabel("Model")
-    plt.ylabel("Total dispatch cost ($)")
-    plt.title("Post-Constraint Layer: Total Dispatch Cost by Model")
+    plt.ylabel(ylabel)
+    plt.title(title)
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150)
     plt.close()
+
+
+def plot_post_constraint_base_generator_cost(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot post-constraint total base generator cost by model."""
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_base_generator_cost",
+        "Total base generator cost ($)",
+        "Post-Constraint Layer: Total Base Generator Cost by Model",
+    )
 
 
 def plot_post_constraint_under_generation(post_metrics_df: pd.DataFrame, output_path) -> None:
     """Plot post-constraint total under-generation by model."""
-    ordered = post_metrics_df.sort_values("total_under_generation_mw")
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_under_generation_mwh",
+        "Total under-generation (MWh)",
+        "Post-Constraint Layer: Total Under-Generation by Model",
+    )
+
+
+def plot_post_constraint_over_generation(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot post-constraint total over-generation by model."""
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_over_generation_mwh",
+        "Total over-generation (MWh)",
+        "Post-Constraint Layer: Total Over-Generation by Model",
+    )
+
+
+def plot_post_constraint_penalty_cost(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot post-constraint total penalty cost by model."""
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_penalty_cost",
+        "Total penalty cost ($)",
+        "Post-Constraint Layer: Total Penalty Cost by Model",
+    )
+
+
+def plot_post_constraint_total_operational_cost(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot post-constraint total operational cost by model."""
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_operational_cost",
+        "Total operational cost ($)",
+        "Post-Constraint Layer: Total Operational Cost by Model",
+    )
+
+
+def plot_post_constraint_constraint_regret(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot post-constraint total constraint regret by model."""
+    _plot_post_constraint_metric_bar(
+        post_metrics_df,
+        output_path,
+        "total_constraint_regret",
+        "Total constraint regret ($)",
+        "Post-Constraint Layer: Total Constraint Regret by Model",
+    )
+
+
+def plot_post_constraint_penalty_cost_stacked(post_metrics_df: pd.DataFrame, output_path) -> None:
+    """Plot under- and over-generation penalty costs stacked by model."""
+    ordered = post_metrics_df.sort_values("total_penalty_cost")
     plt.figure(figsize=(8, 5))
-    colors = [MODEL_STYLES.get(model, {}).get("color", "#777777") for model in ordered["model"]]
-    plt.bar(ordered["model"], ordered["total_under_generation_mw"], color=colors)
+    plt.bar(
+        ordered["model"],
+        ordered["total_under_generation_penalty_cost"],
+        label="Under-generation penalty",
+        color="#E45756",
+    )
+    plt.bar(
+        ordered["model"],
+        ordered["total_over_generation_penalty_cost"],
+        bottom=ordered["total_under_generation_penalty_cost"],
+        label="Over-generation penalty",
+        color="#72B7B2",
+    )
     plt.xlabel("Model")
-    plt.ylabel("Total under-generation (MW)")
-    plt.title("Post-Constraint Layer: Total Under-Generation by Model")
+    plt.ylabel("Total penalty cost ($)")
+    plt.title("Post-Constraint Layer: Penalty Cost Components by Model")
+    plt.legend()
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150)
     plt.close()
+
 
 
 def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_path, max_points=96) -> None:
