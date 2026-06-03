@@ -35,7 +35,7 @@ from split import get_feature_target_metadata, time_based_split, validate_split
 
 
 RAW_DATA_PATH = "data/hrl_load_metered.csv"
-RESULTS_DIR = "results/milestone"
+RESULTS_DIR = "results"
 
 
 def _make_output_dirs(base_dir: Path) -> dict[str, Path]:

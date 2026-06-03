@@ -496,7 +496,7 @@ results/milestone/figures/post_constraint_analysis/
 From the repository root:
 
 ```bash
-.venv/bin/python -u src/run_milestone.py
+.venv/bin/python -u src/run.py
 ```
 
 The `-u` flag makes Python print progress messages immediately, which is useful because the larger multi-zone dataset takes longer than the earlier AEP-only run.

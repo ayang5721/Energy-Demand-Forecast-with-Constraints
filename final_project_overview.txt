@@ -268,7 +268,7 @@ Recommended repo structure:
     |   |-- evaluate.py
     |   |-- plots.py
     |   |-- dispatch.py
-    |   |-- run_milestone.py
+    |   |-- run.py
     |   |-- run_final.py
     |
     |-- results/
@@ -752,7 +752,7 @@ Write these files:
     src/evaluate.py
     src/plots.py
     src/dispatch.py
-    src/run_milestone.py
+    src/run.py
 
 Minimum implementation:
 
@@ -779,7 +779,7 @@ Minimum implementation:
         aggregate predictions to zone level
         compute under/over-generation
 
-    run_milestone.py:
+    run.py:
         run everything end-to-end
 
 

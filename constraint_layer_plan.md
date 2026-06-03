@@ -539,7 +539,7 @@ Do not clutter the milestone with too many plots.
 
 ---
 
-# 8. Update `src/run_milestone.py`
+# 8. Update `src/run.py`
 
 Modify the existing milestone runner.
 
@@ -614,7 +614,7 @@ post_constraint_layer_
 After running:
 
 ```bash
-python3 src/run_milestone.py
+python3 src/run.py
 ```
 
 the repo should create these files.

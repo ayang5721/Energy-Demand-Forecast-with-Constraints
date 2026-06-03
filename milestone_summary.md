@@ -50,7 +50,7 @@ Important files:
 - `src/operational.py`: aggregates load-area predictions to zone-level forecasts.
 - `src/constraints.py`: creates the synthetic generator fleet and runs constrained dispatch.
 - `src/plots.py`: creates the pre-constraint and post-constraint figures.
-- `src/run_milestone.py`: runs the full pipeline.
+- `src/run.py`: runs the full pipeline.
 
 The generated outputs are in:
 

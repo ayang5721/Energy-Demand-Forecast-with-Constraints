@@ -108,7 +108,7 @@ repo/
 │   ├── evaluate.py
 │   ├── plots.py
 │   ├── operational.py
-│   └── run_milestone.py
+│   └── run.py
 │
 ├── results/
 │   └── milestone/
@@ -875,7 +875,7 @@ bar chart of selected metric by model
 
 ---
 
-# 11. Implement `src/run_milestone.py`
+# 11. Implement `src/run.py`
 
 ## Purpose
 
@@ -884,7 +884,7 @@ Run the entire milestone pipeline from one command.
 Command:
 
 ```bash
-python3 src/run_milestone.py
+python3 src/run.py
 ```
 
 ## Constants
@@ -1089,7 +1089,7 @@ Paths of saved outputs
 After running:
 
 ```bash
-python3 src/run_milestone.py
+python3 src/run.py
 ```
 
 the repo should contain:
@@ -1130,7 +1130,7 @@ Requirements:
 4. Never modify the raw CSV.
 5. Save all outputs under results/milestone.
 6. Keep the milestone focused; do not implement final-only models.
-7. Make the pipeline runnable from repo root with python3 src/run_milestone.py.
+7. Make the pipeline runnable from repo root with python3 src/run.py.
 ```
 
 ---

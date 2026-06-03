@@ -13,7 +13,7 @@ pip install -r requirements.txt
 Run the milestone pipeline from the repository root (using venv for dependencies):
 
 ```bash
-.venv/bin/python -u src/run_milestone.py
+.venv/bin/python -u src/run.py
 ```
 
 ## Outputs

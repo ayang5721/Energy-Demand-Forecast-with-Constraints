@@ -578,7 +578,7 @@ Likely files to modify:
 src/constraints.py
 src/operational.py
 src/plots.py
-src/run_milestone.py
+src/run.py
 ```
 
 Suggested division of work:
@@ -625,7 +625,7 @@ total operational cost by model
 constraint regret by model
 ```
 
-### `src/run_milestone.py`
+### `src/run.py`
 
 Make sure the milestone run calls the updated constraint-layer and plotting functions.
 
