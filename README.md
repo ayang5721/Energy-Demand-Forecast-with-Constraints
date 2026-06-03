@@ -1,6 +1,6 @@
 # Energy Demand Forecast with Constraints
 
-This repository contains the CS229 milestone pipeline for 24-hour-ahead AEP load forecasting.
+This repository contains the CS229 milestone pipeline for 24-hour-ahead PJM load forecasting across all zones and load areas present in the input CSV.
 
 ## Run
 
@@ -13,7 +13,7 @@ pip install -r requirements.txt
 Run the milestone pipeline from the repository root (using venv for dependencies):
 
 ```bash
-.venv/bin/python src/run_milestone.py
+.venv/bin/python -u src/run_milestone.py
 ```
 
 ## Outputs
@@ -31,6 +31,7 @@ The pipeline writes all milestone artifacts under `results/milestone/`:
 - `predictions/pre_constraint_layer_test_predictions.csv`
 - `predictions/pre_constraint_layer_zone_predictions.csv`
 - `predictions/post_constraint_layer_dispatch_hourly.csv`
+- `figures/pre_constraint_layer_true_vs_predicted_by_load_area/`
 - `figures/pre_constraint_layer_true_vs_predicted_average_load_area.png`
 - `figures/pre_constraint_layer_error_by_hour.png`
 - `figures/pre_constraint_layer_rmse_by_model.png`

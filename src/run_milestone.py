@@ -70,6 +70,11 @@ def _build_prediction_frame(metadata: pd.DataFrame, y_pred, model_name: str) -> 
     return out[columns]
 
 
+def _safe_filename(value: str) -> str:
+    """Return a filesystem-friendly label."""
+    return "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in str(value))
+
+
 def main() -> None:
     """Run the full milestone pipeline and save metrics, predictions, and figures."""
     results_dir = Path(RESULTS_DIR)
@@ -136,6 +141,7 @@ def main() -> None:
         ],
         ignore_index=True,
     )
+    print("Saving pre-constraint predictions and metrics...")
     predictions.to_csv(dirs["predictions"] / "pre_constraint_layer_test_predictions.csv", index=False)
 
     metrics = make_metrics_table(predictions)
@@ -145,11 +151,20 @@ def main() -> None:
     metrics_by_area.to_csv(dirs["metrics"] / "pre_constraint_layer_forecast_metrics_by_load_area.csv", index=False)
     error_by_hour.to_csv(dirs["metrics"] / "pre_constraint_layer_error_by_hour.csv", index=False)
 
-    for load_area in sorted(predictions["load_area"].unique()):
+    print("Generating pre-constraint plots...")
+    load_area_figures_dir = dirs["figures"] / "pre_constraint_layer_true_vs_predicted_by_load_area"
+    for row in (
+        predictions[["zone", "load_area"]]
+        .drop_duplicates()
+        .sort_values(["zone", "load_area"])
+        .itertuples(index=False)
+    ):
         plot_true_vs_predicted_load_area(
             predictions,
-            dirs["figures"] / f"pre_constraint_layer_true_vs_predicted_{load_area}.png",
-            load_area=load_area,
+            load_area_figures_dir
+            / f"pre_constraint_layer_true_vs_predicted_{_safe_filename(row.zone)}_{_safe_filename(row.load_area)}.png",
+            zone=row.zone,
+            load_area=row.load_area,
         )
     plot_true_vs_predicted_average(
         predictions,
@@ -159,6 +174,7 @@ def main() -> None:
     plot_forecast_metrics_bar(metrics, dirs["figures"] / "pre_constraint_layer_rmse_by_model.png", metric="rmse")
     plot_forecast_metrics_bar(metrics, dirs["figures"] / "pre_constraint_layer_mape_by_model.png", metric="mape")
 
+    print("Aggregating load-area forecasts to zones...")
     pre_constraint_zone_predictions = aggregate_predictions_to_zone(predictions)
     pre_constraint_zone_predictions.to_csv(
         dirs["predictions"] / "pre_constraint_layer_zone_predictions.csv",
@@ -168,8 +184,10 @@ def main() -> None:
     generator_fleet = create_generator_fleet(pre_constraint_zone_predictions["true_zone_load_mw"].max())
     generator_fleet.to_csv(dirs["metrics"] / "post_constraint_layer_generator_fleet.csv", index=False)
 
+    print("Running post-constraint dispatch...")
     dispatch_hourly = run_constrained_dispatch(pre_constraint_zone_predictions, generator_fleet)
     post_constraint_metrics = make_post_constraint_metrics(dispatch_hourly)
+    print("Saving post-constraint dispatch outputs...")
     dispatch_hourly.to_csv(dirs["predictions"] / "post_constraint_layer_dispatch_hourly.csv", index=False)
     post_constraint_metrics.to_csv(dirs["metrics"] / "post_constraint_layer_dispatch_metrics.csv", index=False)
 
@@ -215,6 +233,7 @@ def main() -> None:
     ]
     pre_post_summary.to_csv(dirs["metrics"] / "pre_post_constraint_layer_summary.csv", index=False)
 
+    print("Generating post-constraint plots...")
     plot_post_constraint_dispatch_cost(
         post_constraint_metrics,
         dirs["figures"] / "post_constraint_layer_dispatch_cost_by_model.png",

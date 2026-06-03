@@ -7,6 +7,7 @@ import pandas as pd
 
 
 FEATURE_COLUMNS = [
+    "zone",
     "load_area",
     "hour",
     "day_of_week",
@@ -49,32 +50,45 @@ def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_lag_features(df: pd.DataFrame, lags: list[int]) -> pd.DataFrame:
-    """Add load lag features separately for each load area."""
-    out = df.copy().sort_values(["load_area", "timestamp_utc"])
-    grouped = out.groupby("load_area", sort=False)["load_mw"]
+    """Add timestamp-exact hourly lag features for each zone/load-area series."""
+    out = df.copy()
+    lag_lookup = out[["zone", "load_area", "timestamp_utc", "load_mw"]].copy()
     for lag in lags:
-        out[f"load_lag_{lag}"] = grouped.shift(lag)
+        lagged = lag_lookup.rename(
+            columns={
+                "timestamp_utc": "lag_timestamp_utc",
+                "load_mw": f"load_lag_{lag}",
+            }
+        )
+        out["lag_timestamp_utc"] = out["timestamp_utc"] - pd.Timedelta(hours=lag)
+        out = out.merge(lagged, on=["zone", "load_area", "lag_timestamp_utc"], how="left")
+        out = out.drop(columns=["lag_timestamp_utc"])
     return out
 
 
 def add_rolling_features(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
-    """Add rolling mean and standard deviation features by load area."""
-    out = df.copy().sort_values(["load_area", "timestamp_utc"])
-    grouped = out.groupby("load_area", sort=False)["load_mw"]
+    """Add rolling mean and standard deviation features by zone/load-area series."""
+    out = df.copy().sort_values(["zone", "load_area", "timestamp_utc"])
+    grouped = out.groupby(["zone", "load_area"], sort=False)["load_mw"]
     for window in windows:
         rolling = grouped.rolling(window=window, min_periods=window)
-        out[f"rolling_mean_{window}"] = rolling.mean().reset_index(level=0, drop=True)
-        out[f"rolling_std_{window}"] = rolling.std().reset_index(level=0, drop=True)
+        out[f"rolling_mean_{window}"] = rolling.mean().reset_index(level=[0, 1], drop=True)
+        out[f"rolling_std_{window}"] = rolling.std().reset_index(level=[0, 1], drop=True)
     return out
 
 
 def add_target(df: pd.DataFrame, horizon: int = 24) -> pd.DataFrame:
-    """Add same-load-area target values and timestamps at the forecast horizon."""
-    out = df.copy().sort_values(["load_area", "timestamp_utc"])
-    grouped = out.groupby("load_area", sort=False)
-    out["target_load_mw"] = grouped["load_mw"].shift(-horizon)
-    out["target_timestamp_utc"] = grouped["timestamp_utc"].shift(-horizon)
-    out["target_timestamp_ept"] = grouped["timestamp_ept"].shift(-horizon)
+    """Add same-zone/load-area target values at an exact hourly forecast horizon."""
+    out = df.copy()
+    target_lookup = out[["zone", "load_area", "timestamp_utc", "timestamp_ept", "load_mw"]].rename(
+        columns={
+            "timestamp_utc": "target_timestamp_utc",
+            "timestamp_ept": "target_timestamp_ept",
+            "load_mw": "target_load_mw",
+        }
+    )
+    out["target_timestamp_utc"] = out["timestamp_utc"] + pd.Timedelta(hours=horizon)
+    out = out.merge(target_lookup, on=["zone", "load_area", "target_timestamp_utc"], how="left")
     return out
 
 
@@ -96,16 +110,9 @@ def make_feature_dataset(df: pd.DataFrame) -> pd.DataFrame:
     ]
     before = len(out)
     out = out.dropna(subset=required)
-    out = out.sort_values(["timestamp_utc", "load_area"]).reset_index(drop=True)
+    out = out.sort_values(["timestamp_utc", "zone", "load_area"]).reset_index(drop=True)
 
-    max_history = max(max(LOAD_LAGS), max(window - 1 for window in ROLLING_WINDOWS))
-    expected_rows = (
-        df.groupby("load_area").size()
-        .sub(max_history + FORECAST_HORIZON)
-        .clip(lower=0)
-        .sum()
-    )
-    if len(out) != expected_rows:
-        dropped = before - len(out)
-        print(f"WARNING: Feature rows are {len(out)}, expected {expected_rows}. Dropped {dropped} incomplete rows.")
+    dropped = before - len(out)
+    if dropped:
+        print(f"Dropped {dropped} rows without complete lag, rolling, or exact 24-hour target values.")
     return out

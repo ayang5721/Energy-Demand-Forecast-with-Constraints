@@ -52,8 +52,8 @@ def make_metrics_table(predictions_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def make_metrics_by_load_area(predictions_df: pd.DataFrame) -> pd.DataFrame:
-    """Compute forecast metrics by model and load area."""
-    return predictions_df.groupby(["model", "load_area"], sort=False).apply(_metrics_series).reset_index()
+    """Compute forecast metrics by model, zone, and load area."""
+    return predictions_df.groupby(["model", "zone", "load_area"], sort=False).apply(_metrics_series).reset_index()
 
 
 def make_error_by_hour(predictions_df: pd.DataFrame) -> pd.DataFrame:

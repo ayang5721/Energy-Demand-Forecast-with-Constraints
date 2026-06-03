@@ -22,12 +22,14 @@ MODEL_STYLES = {
 MODEL_ORDER = ["Persistence", "OLS", "Ridge", "Lasso"]
 
 
-def plot_true_vs_predicted_load_area(predictions_df, output_path, load_area=None, max_points=96) -> None:
+def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, load_area=None, max_points=96) -> None:
     """Plot pre-constraint actual and model predictions for one load area."""
     df = predictions_df.copy()
     if load_area is None:
         load_area = sorted(df["load_area"].unique())[0]
-    df = df[df["load_area"] == load_area].sort_values("target_timestamp_ept")
+    if zone is None:
+        zone = sorted(df[df["load_area"] == load_area]["zone"].unique())[0]
+    df = df[(df["zone"] == zone) & (df["load_area"] == load_area)].sort_values("target_timestamp_ept")
     sample_times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
     sample = df[df["target_timestamp_ept"].isin(sample_times)]
 
@@ -63,7 +65,7 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, load_area=None
                 **MODEL_STYLES.get(model, {}),
             )
     ax_error.axhline(0, color="black", linewidth=1.0, alpha=0.5)
-    ax_load.set_title(f"Pre-Constraint Layer: True vs Predicted Load - {load_area}")
+    ax_load.set_title(f"Pre-Constraint Layer: True vs Predicted Load - {zone} / {load_area}")
     ax_load.set_ylabel("MW")
     ax_error.set_xlabel("Target timestamp EPT")
     ax_error.set_ylabel("Error MW")
@@ -203,10 +205,18 @@ def plot_post_constraint_under_generation(post_metrics_df: pd.DataFrame, output_
 
 
 def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_path, max_points=96) -> None:
-    """Plot scheduled generation against true zone load for an initial sample window."""
+    """Plot total scheduled generation against total true load for an initial sample window."""
     df = dispatch_df.copy().sort_values("target_timestamp_ept")
     sample_times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
     sample = df[df["target_timestamp_ept"].isin(sample_times)]
+    sample = (
+        sample.groupby(["target_timestamp_ept", "model"], sort=False)
+        .agg(
+            true_zone_load_mw=("true_zone_load_mw", "sum"),
+            scheduled_generation_mw=("scheduled_generation_mw", "sum"),
+        )
+        .reset_index()
+    )
 
     fig, (ax_load, ax_error) = plt.subplots(
         2,
@@ -240,7 +250,7 @@ def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_pat
                 **MODEL_STYLES.get(model, {}),
             )
     ax_error.axhline(0, color="black", linewidth=1.0, alpha=0.5)
-    ax_load.set_title("Post-Constraint Layer: Scheduled vs True Zone Load")
+    ax_load.set_title("Post-Constraint Layer: Scheduled vs True Total Load Across Zones")
     ax_load.set_ylabel("MW")
     ax_error.set_xlabel("Target timestamp EPT")
     ax_error.set_ylabel("Error MW")

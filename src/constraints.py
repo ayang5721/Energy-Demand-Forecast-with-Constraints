@@ -54,40 +54,68 @@ def greedy_dispatch(demand_mw: float, generator_fleet: pd.DataFrame) -> dict:
     return result
 
 
+def _dispatch_many(demand_mw, generator_fleet: pd.DataFrame) -> dict:
+    """Vectorized greedy dispatch for many demand values."""
+    demand = np.maximum(0.0, np.asarray(demand_mw, dtype=float))
+    remaining_demand = demand.copy()
+    total_generation_mw = np.zeros_like(demand)
+    dispatch_cost = np.zeros_like(demand)
+    result = {}
+
+    ordered_fleet = generator_fleet.sort_values(["cost_per_mwh", "dispatch_order"])
+    for row in ordered_fleet.itertuples(index=False):
+        generation_mw = np.minimum(float(row.max_mw), remaining_demand)
+        generation_mw = np.maximum(0.0, generation_mw)
+        remaining_demand -= generation_mw
+        total_generation_mw += generation_mw
+        dispatch_cost += generation_mw * float(row.cost_per_mwh)
+        result[f"{row.generator}_generation_mw"] = generation_mw
+
+    unmet_demand_mw = np.maximum(0.0, remaining_demand)
+    feasible = unmet_demand_mw <= DISPATCH_TOLERANCE
+    result.update(
+        {
+            "total_generation_mw": total_generation_mw,
+            "dispatch_cost": dispatch_cost,
+            "feasible": feasible,
+            "unmet_demand_mw": np.where(feasible, 0.0, unmet_demand_mw),
+        }
+    )
+    return result
+
+
 def run_constrained_dispatch(zone_predictions_df: pd.DataFrame, generator_fleet: pd.DataFrame) -> pd.DataFrame:
     """Run forecast and oracle dispatch for every model-hour zone forecast."""
-    rows = []
-    for row in zone_predictions_df.itertuples(index=False):
-        forecast_dispatch = greedy_dispatch(row.predicted_zone_load_mw, generator_fleet)
-        oracle_dispatch = greedy_dispatch(row.true_zone_load_mw, generator_fleet)
+    out = zone_predictions_df[
+        [
+            "target_timestamp_utc",
+            "target_timestamp_ept",
+            "zone",
+            "model",
+            "true_zone_load_mw",
+            "predicted_zone_load_mw",
+        ]
+    ].copy()
 
-        scheduled_generation_mw = forecast_dispatch["total_generation_mw"]
-        oracle_generation_mw = oracle_dispatch["total_generation_mw"]
-        out = {
-            "target_timestamp_utc": row.target_timestamp_utc,
-            "target_timestamp_ept": row.target_timestamp_ept,
-            "model": row.model,
-            "true_zone_load_mw": row.true_zone_load_mw,
-            "predicted_zone_load_mw": row.predicted_zone_load_mw,
-            "scheduled_generation_mw": scheduled_generation_mw,
-            "dispatch_cost": forecast_dispatch["dispatch_cost"],
-            "oracle_generation_mw": oracle_generation_mw,
-            "oracle_dispatch_cost": oracle_dispatch["dispatch_cost"],
-            "cost_gap": forecast_dispatch["dispatch_cost"] - oracle_dispatch["dispatch_cost"],
-            "feasible_for_forecast": forecast_dispatch["feasible"],
-            "unmet_forecast_demand_mw": forecast_dispatch["unmet_demand_mw"],
-            "under_generation_mw": max(0.0, row.true_zone_load_mw - scheduled_generation_mw),
-            "over_generation_mw": max(0.0, scheduled_generation_mw - row.true_zone_load_mw),
-        }
+    forecast_dispatch = _dispatch_many(out["predicted_zone_load_mw"], generator_fleet)
+    oracle_dispatch = _dispatch_many(out["true_zone_load_mw"], generator_fleet)
 
-        for generator in generator_fleet["generator"]:
-            column = f"{generator}_generation_mw"
-            out[column] = forecast_dispatch.get(column, 0.0)
-            out[f"oracle_{column}"] = oracle_dispatch.get(column, 0.0)
+    out["scheduled_generation_mw"] = forecast_dispatch["total_generation_mw"]
+    out["dispatch_cost"] = forecast_dispatch["dispatch_cost"]
+    out["oracle_generation_mw"] = oracle_dispatch["total_generation_mw"]
+    out["oracle_dispatch_cost"] = oracle_dispatch["dispatch_cost"]
+    out["cost_gap"] = out["dispatch_cost"] - out["oracle_dispatch_cost"]
+    out["feasible_for_forecast"] = forecast_dispatch["feasible"]
+    out["unmet_forecast_demand_mw"] = forecast_dispatch["unmet_demand_mw"]
+    out["under_generation_mw"] = np.maximum(0.0, out["true_zone_load_mw"] - out["scheduled_generation_mw"])
+    out["over_generation_mw"] = np.maximum(0.0, out["scheduled_generation_mw"] - out["true_zone_load_mw"])
 
-        rows.append(out)
+    for generator in generator_fleet["generator"]:
+        column = f"{generator}_generation_mw"
+        out[column] = forecast_dispatch.get(column, 0.0)
+        out[f"oracle_{column}"] = oracle_dispatch.get(column, 0.0)
 
-    return pd.DataFrame(rows)
+    return out
 
 
 def make_post_constraint_metrics(dispatch_df: pd.DataFrame) -> pd.DataFrame:

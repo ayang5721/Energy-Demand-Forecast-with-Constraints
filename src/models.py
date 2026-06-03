@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LassoLars, LinearRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -12,7 +15,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from evaluate import rmse
 
 
-CATEGORICAL_COLUMNS = ["load_area"]
+CATEGORICAL_COLUMNS = ["zone", "load_area"]
 NUMERIC_COLUMNS = [
     "hour",
     "day_of_week",
@@ -76,7 +79,9 @@ def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> Pipe
             ("model", LassoLars(alpha=alpha, max_iter=500)),
         ]
     )
-    return model.fit(X_train, y_train)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        return model.fit(X_train, y_train)
 
 
 def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
