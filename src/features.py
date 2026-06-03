@@ -23,6 +23,9 @@ FEATURE_COLUMNS = [
     "rolling_mean_24",
     "rolling_std_24",
 ]
+FORECAST_HORIZON = 24
+LOAD_LAGS = [1, 24, 48]
+ROLLING_WINDOWS = [24]
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -79,9 +82,9 @@ def make_feature_dataset(df: pd.DataFrame) -> pd.DataFrame:
     """Run the full milestone feature pipeline and drop incomplete rows."""
     out = add_time_features(df)
     out = add_cyclical_features(out)
-    out = add_lag_features(out, [1, 24, 48])
-    out = add_rolling_features(out, [24])
-    out = add_target(out, horizon=24)
+    out = add_lag_features(out, LOAD_LAGS)
+    out = add_rolling_features(out, ROLLING_WINDOWS)
+    out = add_target(out, horizon=FORECAST_HORIZON)
 
     required = FEATURE_COLUMNS + [
         "timestamp_utc",
@@ -94,6 +97,15 @@ def make_feature_dataset(df: pd.DataFrame) -> pd.DataFrame:
     before = len(out)
     out = out.dropna(subset=required)
     out = out.sort_values(["timestamp_utc", "load_area"]).reset_index(drop=True)
-    if len(out) != 2592:
-        print(f"WARNING: Feature rows are {len(out)}, expected 2592. Dropped {before - len(out)} incomplete rows.")
+
+    max_history = max(max(LOAD_LAGS), max(window - 1 for window in ROLLING_WINDOWS))
+    expected_rows = (
+        df.groupby("load_area").size()
+        .sub(max_history + FORECAST_HORIZON)
+        .clip(lower=0)
+        .sum()
+    )
+    if len(out) != expected_rows:
+        dropped = before - len(out)
+        print(f"WARNING: Feature rows are {len(out)}, expected {expected_rows}. Dropped {dropped} incomplete rows.")
     return out

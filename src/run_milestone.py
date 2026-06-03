@@ -10,7 +10,7 @@ from constraints import create_generator_fleet, make_post_constraint_metrics, ru
 from data import clean_pjm_data, load_raw_data, validate_clean_data
 from evaluate import make_error_by_hour, make_metrics_by_load_area, make_metrics_table
 from features import make_feature_dataset
-from models import CATEGORICAL_COLUMNS, NUMERIC_COLUMNS, predict_persistence, train_ols, tune_ridge
+from models import CATEGORICAL_COLUMNS, NUMERIC_COLUMNS, predict_persistence, train_ols, tune_lasso, tune_ridge
 from operational import aggregate_predictions_to_zone
 from plots import (
     plot_error_by_hour,
@@ -90,10 +90,16 @@ def main() -> None:
     X_val, y_val, _ = get_feature_target_metadata(val_df)
     X_test, y_test, test_metadata = get_feature_target_metadata(test_df)
 
+    print("\nTraining models")
     persistence_test_pred = predict_persistence(X_test)
+    print("Persistence predictions complete.")
+
+    print("Training OLS...")
     ols_model = train_ols(X_train, y_train, CATEGORICAL_COLUMNS, NUMERIC_COLUMNS)
     ols_test_pred = ols_model.predict(X_test)
+    print("OLS complete.")
 
+    print("Tuning Ridge...")
     best_ridge_model, best_alpha, ridge_val_results = tune_ridge(
         X_train,
         y_train,
@@ -105,12 +111,28 @@ def main() -> None:
     )
     ridge_test_pred = best_ridge_model.predict(X_test)
     ridge_val_results.to_csv(dirs["metrics"] / "pre_constraint_layer_ridge_validation_results.csv", index=False)
+    print(f"Ridge complete. Best alpha: {best_alpha}")
+
+    print("Tuning Lasso...")
+    best_lasso_model, best_lasso_alpha, lasso_val_results = tune_lasso(
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+        CATEGORICAL_COLUMNS,
+        NUMERIC_COLUMNS,
+    )
+    lasso_test_pred = best_lasso_model.predict(X_test)
+    lasso_val_results.to_csv(dirs["metrics"] / "pre_constraint_layer_lasso_validation_results.csv", index=False)
+    print(f"Lasso complete. Best alpha: {best_lasso_alpha}")
 
     predictions = pd.concat(
         [
             _build_prediction_frame(test_metadata, persistence_test_pred, "Persistence"),
             _build_prediction_frame(test_metadata, ols_test_pred, "OLS"),
             _build_prediction_frame(test_metadata, ridge_test_pred, "Ridge"),
+            _build_prediction_frame(test_metadata, lasso_test_pred, "Lasso"),
         ],
         ignore_index=True,
     )
@@ -211,6 +233,7 @@ def main() -> None:
     print(f"Feature rows: {len(feature_df)}")
     print(f"Train/val/test rows: {len(train_df)}/{len(val_df)}/{len(test_df)}")
     print(f"Best ridge alpha: {best_alpha}")
+    print(f"Best lasso alpha: {best_lasso_alpha}")
     print("\nPre-constraint layer forecast metrics")
     print(metrics.to_string(index=False))
     print("\nPost-constraint layer dispatch metrics")

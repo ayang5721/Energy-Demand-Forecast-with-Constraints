@@ -24,6 +24,7 @@ The pipeline writes all milestone artifacts under `results/milestone/`:
 - `metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv`
 - `metrics/pre_constraint_layer_error_by_hour.csv`
 - `metrics/pre_constraint_layer_ridge_validation_results.csv`
+- `metrics/pre_constraint_layer_lasso_validation_results.csv`
 - `metrics/post_constraint_layer_generator_fleet.csv`
 - `metrics/post_constraint_layer_dispatch_metrics.csv`
 - `metrics/pre_post_constraint_layer_summary.csv`
@@ -38,4 +39,4 @@ The pipeline writes all milestone artifacts under `results/milestone/`:
 - `figures/post_constraint_layer_under_generation_by_model.png`
 - `figures/post_constraint_layer_scheduled_vs_true_zone_load.png`
 
-The milestone models are Persistence, Ordinary Least Squares, and Ridge regression.
+The milestone models are Persistence, Ordinary Least Squares, Ridge regression, and Lasso regression.

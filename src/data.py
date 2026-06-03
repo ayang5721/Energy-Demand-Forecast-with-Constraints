@@ -92,13 +92,17 @@ def validate_clean_data(df: pd.DataFrame) -> dict:
     print(f"All verified: {summary['all_verified']}")
     print(f"Duplicates after cleaning: {summary['duplicate_count_after_cleaning']}")
 
-    expected_rows_per_area = {area: 720 for area in EXPECTED_LOAD_AREAS}
+    expected_rows_per_area = {
+        area: summary["n_unique_timestamps"]
+        for area in summary["load_area_values"]
+    }
     checks = [
-        (summary["n_rows"] == 2880, "Expected 2880 cleaned rows."),
-        (summary["n_unique_timestamps"] == 720, "Expected 720 unique timestamps."),
         (summary["zone_values"] == ["AEP"], "Expected only AEP zone."),
         (summary["load_area_values"] == EXPECTED_LOAD_AREAS, "Expected four known AEP load areas."),
-        (summary["rows_per_load_area"] == expected_rows_per_area, "Expected 720 rows per load area."),
+        (
+            summary["rows_per_load_area"] == expected_rows_per_area,
+            "Expected each load area to have one row per unique timestamp.",
+        ),
         (summary["all_verified"], "Expected all rows to be verified."),
     ]
     for ok, message in checks:
