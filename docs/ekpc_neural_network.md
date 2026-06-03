@@ -2,9 +2,10 @@
 
 ## Overview
 
-This document describes a small feedforward neural network that forecasts hourly electricity load for the PJM Western region **EKPC** load area. The model predicts load **24 hours ahead** using lagged load history and calendar features. Results are compared against a **persistence** baseline (current load as the forecast).
+This document describes a small feedforward neural network that forecasts hourly electricity load for the PJM Western region **EKPC** load area. The model predicts load **24 hours ahead** using lagged load history, calendar features, and optional Kentucky weather data. Results are compared against a **persistence** baseline (current load as the forecast).
 
-**Data file:** `data/Western_EKPC_load_metered.csv`  
+**Load data:** `2022_load_ekpc.csv` through `Western_EKPC_load_metered.csv` (Jun 2022–May 2026)  
+**Weather data:** `data/4_year_kentucky_weather_data.csv` (hourly 2 m temperature and humidity, Jun 2022–Jun 2026, UTC)  
 **Script:** `src/ekpc_neural_network.py`  
 **Results directory:** `results/ekpc_neural_network/`
 
@@ -14,9 +15,9 @@ This document describes a small feedforward neural network that forecasts hourly
 |------|-------|
 | Zone | EKPC |
 | Load area | EKPC |
-| UTC range | 2025-06-01 04:00:00 to 2026-05-01 03:00:00 |
-| Clean hourly rows | 7248 |
-| Feature rows (after lags/target) | 7056 |
+| UTC range | 2022-06-01 04:00:00 to 2026-05-01 03:00:00 |
+| Clean hourly rows | 33552 |
+| Feature rows (after lags/target) | 24768 |
 
 Rows are hourly metered load (`mw` → `load_mw`). Only verified EKPC rows are retained after cleaning.
 
@@ -38,6 +39,7 @@ target_load_mw(t) = load_mw at t + 24 hours
 | `is_weekend` | 1 if Saturday or Sunday |
 | `sin_hour`, `cos_hour` | Cyclical hour encoding |
 | `sin_day_of_week`, `cos_day_of_week` | Cyclical weekday encoding |
+| `sin_day_of_year`, `cos_day_of_year` | Cyclical annual encoding |
 
 ### Load history
 
@@ -46,17 +48,32 @@ target_load_mw(t) = load_mw at t + 24 hours
 | `load_lag_1` … `load_lag_24` | Past 24 hours of load |
 | `load_lag_48` | Load 48 hours before `t` |
 | `load_lag_168` | Load one week before `t` |
+| `load_lag_8760` | Load same hour one year before `t` |
 | `load_mw` | Current load at `t` (same clock hour as target on previous day) |
 | `rolling_mean_24`, `rolling_std_24` | 24-hour rolling statistics |
 | `rolling_mean_168`, `rolling_std_168` | 168-hour rolling statistics |
 
-**Input dimension:** 37 numeric features (standardized before the network).
+### Weather (Kentucky, UTC-aligned)
+
+| Feature | Description |
+|---------|-------------|
+| `temperature_c` | 2 m air temperature (°C) at forecast issue time `t` |
+| `humidity_pct` | Relative humidity (%) at `t` |
+| `temperature_lag_24` | Temperature 24 hours before `t` |
+| `humidity_lag_24` | Humidity 24 hours before `t` |
+
+Weather is merged on `timestamp_utc` with load. Only weather known at `t` is used (no target-hour weather, avoiding lookahead).
+
+**Input dimension (no weather):** 40 numeric features  
+**Input dimension (with weather):** 44 numeric features  
+
+Features are standardized before the network.
 
 ## Model architecture
 
 | Layer | Units | Activation |
 |-------|------:|------------|
-| Input | 37 | — |
+| Input | 40 or 44 | — |
 | Hidden 1 | 64 | ReLU |
 | Hidden 2 | 32 | ReLU |
 | Output | 1 | linear |
@@ -83,9 +100,9 @@ Chronological split by unique `timestamp_utc` (no shuffling):
 
 | Split | Timestamps | Rows |
 |-------|----------:|-----:|
-| Train | 4939 | 4939 |
-| Validation | 1058 | 1058 |
-| Test | 1059 | 1059 |
+| Train | 17337 | 17337 |
+| Validation | 3715 | 3715 |
+| Test | 3716 | 3716 |
 
 Fractions: 70% train, 15% validation, 15% test.
 
@@ -103,36 +120,54 @@ Fractions: 70% train, 15% validation, 15% test.
 
 Forecasts `load_mw` at time `t` as the prediction for load at `t + 24`.
 
-| MAE (MW) | 136.165 |
-| RMSE (MW) | 183.211 |
-| MAPE (%) | 10.149 |
-| Bias (MW) | 23.876 |
-| Peak-hour MAE (MW) | 223.881 |
-| N | 1059 |
+| MAE (MW) | 218.080 |
+| RMSE (MW) | 303.388 |
+| MAPE (%) | 12.641 |
+| Bias (MW) | 0.614 |
+| Peak-hour MAE (MW) | 440.459 |
+| N | 3716 |
 
-### Neural network
+### Neural network (load + calendar only)
 
-| MAE (MW) | 139.308 |
-| RMSE (MW) | 182.530 |
-| MAPE (%) | 10.365 |
-| Bias (MW) | -5.761 |
-| Peak-hour MAE (MW) | 200.651 |
-| N | 1059 |
+| MAE (MW) | 203.217 |
+| RMSE (MW) | 276.713 |
+| MAPE (%) | 12.118 |
+| Bias (MW) | 14.922 |
+| Peak-hour MAE (MW) | 392.699 |
+| N | 3716 |
+
+### Neural network + weather
+
+| MAE (MW) | 204.484 |
+| RMSE (MW) | 278.802 |
+| MAPE (%) | 12.122 |
+| Bias (MW) | 27.509 |
+| Peak-hour MAE (MW) | 393.356 |
+| N | 3716 |
 
 ### Comparison (Persistence − Neural Network)
 
 | Metric | Δ (positive = neural network better) |
 |--------|--------------------------------------|
-| MAE | -3.143 MW |
-| RMSE | +0.681 MW |
+| MAE | +14.863 MW |
+| RMSE | +26.675 MW |
 
-**Training iterations used:** 600
+### Weather uplift (base NN − NN + weather)
+
+| Metric | Δ (positive = weather model better) |
+|--------|-------------------------------------|
+| MAE | -1.267 MW |
+| RMSE | -2.089 MW |
+
+**Training iterations (base NN):** 600  
+**Training iterations (NN + weather):** 600
 
 ## Output artifacts
 
 | File | Description |
 |------|-------------|
-| `results/ekpc_neural_network/predictions/test_predictions.csv` | Test-set predictions for both models |
+| `results/ekpc_neural_network/figures/model_comparison.png` | Bar chart of errors and test-period time series |
+| `results/ekpc_neural_network/predictions/test_predictions.csv` | Test-set predictions for all models |
 | `results/ekpc_neural_network/metrics/test_metrics.json` | Test metrics by model |
 | `results/ekpc_neural_network/metrics/validation_metrics.json` | Validation metrics (model selection reference) |
 | `docs/ekpc_neural_network.md` | This report |
