@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import os
 from pathlib import Path
 
@@ -24,9 +22,9 @@ MODEL_ORDER = ["Persistence", "OLS", "Neural Network", "Neural Network + Weather
 
 def _ordered_models(df: pd.DataFrame) -> list[str]:
     models = df["model"].dropna().unique().tolist()
-    ordered = [model for model in MODEL_ORDER if model in models]
-    ordered.extend(model for model in models if model not in MODEL_ORDER)
-    return ordered
+    ordered_models = [m for m in MODEL_ORDER if m in models]
+    ordered_models.extend(m for m in models if m not in MODEL_ORDER)
+    return ordered_models
 
 
 def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, load_area=None, max_points=96) -> None:
@@ -36,8 +34,8 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, loa
     if zone is None:
         zone = sorted(df[df["load_area"] == load_area]["zone"].unique())[0]
     df = df[(df["zone"] == zone) & (df["load_area"] == load_area)].sort_values("target_timestamp_ept")
-    sample_times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
-    sample = df[df["target_timestamp_ept"].isin(sample_times)]
+    times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
+    sample = df[df["target_timestamp_ept"].isin(times)]
 
     fig, (ax_load, ax_error) = plt.subplots(
         2,
@@ -47,26 +45,26 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, loa
         constrained_layout=True,
         gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08},
     )
-    actual = sample.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
+    observed = sample.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
     ax_load.plot(
-        actual["target_timestamp_ept"],
-        actual["true_load_mw"],
+        observed["target_timestamp_ept"],
+        observed["true_load_mw"],
         label="Actual",
         color="black",
         linewidth=2.5,
     )
     for model in _ordered_models(sample):
-        model_df = sample[sample["model"] == model].sort_values("target_timestamp_ept")
-        if not model_df.empty:
+        rows = sample[sample["model"] == model].sort_values("target_timestamp_ept")
+        if not rows.empty:
             ax_load.plot(
-                model_df["target_timestamp_ept"],
-                model_df["predicted_load_mw"],
+                rows["target_timestamp_ept"],
+                rows["predicted_load_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )
             ax_error.plot(
-                model_df["target_timestamp_ept"],
-                model_df["predicted_load_mw"] - model_df["true_load_mw"],
+                rows["target_timestamp_ept"],
+                rows["predicted_load_mw"] - rows["true_load_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )
@@ -85,8 +83,8 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, loa
 
 def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -> None:
     df = predictions_df.copy().sort_values("target_timestamp_ept")
-    sample_times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
-    sample = df[df["target_timestamp_ept"].isin(sample_times)]
+    times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
+    sample = df[df["target_timestamp_ept"].isin(times)]
 
     averaged = (
         sample.groupby(["target_timestamp_ept", "model"], sort=False)
@@ -102,26 +100,26 @@ def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -
         constrained_layout=True,
         gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08},
     )
-    actual = averaged.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
+    observed = averaged.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
     ax_load.plot(
-        actual["target_timestamp_ept"],
-        actual["true_load_mw"],
+        observed["target_timestamp_ept"],
+        observed["true_load_mw"],
         label="Actual",
         color="black",
         linewidth=2.5,
     )
     for model in _ordered_models(averaged):
-        model_df = averaged[averaged["model"] == model].sort_values("target_timestamp_ept")
-        if not model_df.empty:
+        rows = averaged[averaged["model"] == model].sort_values("target_timestamp_ept")
+        if not rows.empty:
             ax_load.plot(
-                model_df["target_timestamp_ept"],
-                model_df["predicted_load_mw"],
+                rows["target_timestamp_ept"],
+                rows["predicted_load_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )
             ax_error.plot(
-                model_df["target_timestamp_ept"],
-                model_df["predicted_load_mw"] - model_df["true_load_mw"],
+                rows["target_timestamp_ept"],
+                rows["predicted_load_mw"] - rows["true_load_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )
@@ -141,10 +139,10 @@ def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -
 def plot_error_by_hour(error_by_hour_df, output_path) -> None:
     plt.figure(figsize=(10, 6))
     for model in _ordered_models(error_by_hour_df):
-        group = error_by_hour_df[error_by_hour_df["model"] == model]
-        if group.empty:
+        rows = error_by_hour_df[error_by_hour_df["model"] == model]
+        if rows.empty:
             continue
-        ordered = group.sort_values("hour")
+        ordered = rows.sort_values("hour")
         plt.plot(
             ordered["hour"],
             ordered["mean_abs_error"],
@@ -289,8 +287,8 @@ def plot_post_constraint_penalty_cost_stacked(post_metrics_df: pd.DataFrame, out
 
 def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_path, max_points=96) -> None:
     df = dispatch_df.copy().sort_values("target_timestamp_ept")
-    sample_times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
-    sample = df[df["target_timestamp_ept"].isin(sample_times)]
+    times = df["target_timestamp_ept"].drop_duplicates().head(max_points)
+    sample = df[df["target_timestamp_ept"].isin(times)]
     sample = (
         sample.groupby(["target_timestamp_ept", "model"], sort=False)
         .agg(
@@ -308,26 +306,26 @@ def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_pat
         constrained_layout=True,
         gridspec_kw={"height_ratios": [3, 1], "hspace": 0.08},
     )
-    actual = sample.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
+    observed = sample.drop_duplicates("target_timestamp_ept").sort_values("target_timestamp_ept")
     ax_load.plot(
-        actual["target_timestamp_ept"],
-        actual["true_zone_load_mw"],
+        observed["target_timestamp_ept"],
+        observed["true_zone_load_mw"],
         label="Actual",
         color="black",
         linewidth=2.5,
     )
     for model in _ordered_models(sample):
-        model_df = sample[sample["model"] == model].sort_values("target_timestamp_ept")
-        if not model_df.empty:
+        rows = sample[sample["model"] == model].sort_values("target_timestamp_ept")
+        if not rows.empty:
             ax_load.plot(
-                model_df["target_timestamp_ept"],
-                model_df["scheduled_generation_mw"],
+                rows["target_timestamp_ept"],
+                rows["scheduled_generation_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )
             ax_error.plot(
-                model_df["target_timestamp_ept"],
-                model_df["scheduled_generation_mw"] - model_df["true_zone_load_mw"],
+                rows["target_timestamp_ept"],
+                rows["scheduled_generation_mw"] - rows["true_zone_load_mw"],
                 label=model,
                 **MODEL_STYLES.get(model, {}),
             )

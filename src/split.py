@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pandas as pd
 
 from features import FEATURE_COLUMNS
@@ -18,9 +16,7 @@ METADATA_COLUMNS = [
 
 
 def time_based_split(df: pd.DataFrame, train_frac: float = 0.70, val_frac: float = 0.15):
-    train_parts = []
-    val_parts = []
-    test_parts = []
+    train_chunks, val_chunks, test_chunks = [], [], []
 
     for _, group in df.groupby(["zone", "load_area"], sort=False):
         timestamps = sorted(group["timestamp_utc"].dropna().unique())
@@ -32,13 +28,13 @@ def time_based_split(df: pd.DataFrame, train_frac: float = 0.70, val_frac: float
         val_ts = set(timestamps[train_end:val_end])
         test_ts = set(timestamps[val_end:])
 
-        train_parts.append(group[group["timestamp_utc"].isin(train_ts)])
-        val_parts.append(group[group["timestamp_utc"].isin(val_ts)])
-        test_parts.append(group[group["timestamp_utc"].isin(test_ts)])
+        train_chunks.append(group[group["timestamp_utc"].isin(train_ts)])
+        val_chunks.append(group[group["timestamp_utc"].isin(val_ts)])
+        test_chunks.append(group[group["timestamp_utc"].isin(test_ts)])
 
-    train_df = pd.concat(train_parts, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
-    val_df = pd.concat(val_parts, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
-    test_df = pd.concat(test_parts, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
+    train_df = pd.concat(train_chunks, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
+    val_df = pd.concat(val_chunks, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
+    test_df = pd.concat(test_chunks, ignore_index=True).sort_values(["timestamp_utc", "zone", "load_area"])
     return train_df, val_df, test_df
 
 
@@ -47,8 +43,8 @@ def get_feature_target_metadata(df: pd.DataFrame, feature_columns=None):
         feature_columns = FEATURE_COLUMNS
     X = df[feature_columns].copy()
     y = df["target_load_mw"].copy()
-    metadata = df[METADATA_COLUMNS].copy()
-    return X, y, metadata
+    meta = df[METADATA_COLUMNS].copy()
+    return X, y, meta
 
 
 def validate_split(train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
@@ -61,8 +57,8 @@ def validate_split(train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd.Dat
     print(f"Test series: {test_df[['zone', 'load_area']].drop_duplicates().shape[0]}")
 
     keys = ["zone", "load_area"]
-    series_keys = pd.concat([train_df[keys], val_df[keys], test_df[keys]]).drop_duplicates()
-    for row in series_keys.itertuples(index=False):
+    all_series = pd.concat([train_df[keys], val_df[keys], test_df[keys]]).drop_duplicates()
+    for row in all_series.itertuples(index=False):
         train_group = train_df[(train_df["zone"] == row.zone) & (train_df["load_area"] == row.load_area)]
         val_group = val_df[(val_df["zone"] == row.zone) & (val_df["load_area"] == row.load_area)]
         test_group = test_df[(test_df["zone"] == row.zone) & (test_df["load_area"] == row.load_area)]

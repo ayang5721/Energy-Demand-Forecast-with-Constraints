@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import pandas as pd
 
 
@@ -8,8 +6,7 @@ def load_raw_data(path: str) -> pd.DataFrame:
 
 
 def load_weather_data(path: str) -> pd.DataFrame:
-    weather = pd.read_csv(path, skiprows=3)
-    weather = weather.rename(
+    weather = pd.read_csv(path, skiprows=3).rename(
         columns={
             "time": "timestamp_utc",
             "temperature_2m (°C)": "temperature_c",
@@ -30,26 +27,26 @@ def filter_weather_to_load_range(
     load_df: pd.DataFrame,
     lag_hours: int = 24,
 ) -> pd.DataFrame:
-    min_load_timestamp = load_df["timestamp_utc"].min()
-    max_load_timestamp = load_df["timestamp_utc"].max()
-    min_weather_timestamp = min_load_timestamp - pd.Timedelta(hours=lag_hours)
+    first_load_ts = load_df["timestamp_utc"].min()
+    last_load_ts = load_df["timestamp_utc"].max()
+    first_weather_ts = first_load_ts - pd.Timedelta(hours=lag_hours)
 
     filtered = weather_df[
-        (weather_df["timestamp_utc"] >= min_weather_timestamp)
-        & (weather_df["timestamp_utc"] <= max_load_timestamp)
+        (weather_df["timestamp_utc"] >= first_weather_ts)
+        & (weather_df["timestamp_utc"] <= last_load_ts)
     ].copy()
 
     weather_timestamps = set(filtered["timestamp_utc"])
     load_timestamps = set(load_df["timestamp_utc"].dropna().unique())
-    missing_issue_timestamps = sorted(load_timestamps - weather_timestamps)
-    if missing_issue_timestamps:
-        first_missing = missing_issue_timestamps[0]
+    missing_issue = sorted(load_timestamps - weather_timestamps)
+    if missing_issue:
+        first_missing = missing_issue[0]
         raise ValueError(f"Weather data is missing issue-time coverage starting at {first_missing}.")
 
     lag_timestamps = {timestamp - pd.Timedelta(hours=lag_hours) for timestamp in load_timestamps}
-    missing_lag_timestamps = sorted(lag_timestamps - weather_timestamps)
-    if missing_lag_timestamps:
-        first_missing = missing_lag_timestamps[0]
+    missing_lag = sorted(lag_timestamps - weather_timestamps)
+    if missing_lag:
+        first_missing = missing_lag[0]
         raise ValueError(f"Weather data is missing {lag_hours}-hour lag coverage starting at {first_missing}.")
 
     return filtered.reset_index(drop=True)
@@ -58,11 +55,12 @@ def filter_weather_to_load_range(
 def _to_bool(series: pd.Series) -> pd.Series:
     if pd.api.types.is_bool_dtype(series):
         return series
+    lookup = {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
     return (
         series.astype(str)
         .str.strip()
         .str.lower()
-        .map({"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False})
+        .map(lookup)
     )
 
 
@@ -83,13 +81,13 @@ def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
     if "is_verified" in cleaned.columns:
         cleaned["is_verified"] = _to_bool(cleaned["is_verified"])
 
-    string_cols = ["nerc_region", "market_region", "zone", "load_area"]
-    for col in string_cols:
+    for col in ["nerc_region", "market_region", "zone", "load_area"]:
         if col in cleaned.columns:
             cleaned[col] = cleaned[col].astype(str).str.strip()
 
-    cleaned = cleaned.dropna(subset=["timestamp_utc", "timestamp_ept", "load_area", "zone", "load_mw"])
-    cleaned = cleaned.drop_duplicates(subset=["timestamp_utc", "zone", "load_area"])
+    needed = ["timestamp_utc", "timestamp_ept", "load_area", "zone", "load_mw"]
+    cleaned = cleaned.dropna(subset=needed)
+    cleaned = cleaned.drop_duplicates(["timestamp_utc", "zone", "load_area"])
     cleaned = cleaned.sort_values(["timestamp_utc", "zone", "load_area"]).reset_index(drop=True)
 
     columns = [
@@ -106,7 +104,7 @@ def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_clean_data(df: pd.DataFrame) -> dict:
-    duplicate_count = int(df.duplicated(subset=["timestamp_utc", "zone", "load_area"]).sum())
+    duplicate_count = int(df.duplicated(["timestamp_utc", "zone", "load_area"]).sum())
     summary = {
         "n_rows": int(len(df)),
         "n_unique_timestamps": int(df["timestamp_utc"].nunique()),

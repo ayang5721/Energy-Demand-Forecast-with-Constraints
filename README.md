@@ -1,6 +1,6 @@
 # Energy Demand Forecast with Constraints
 
-This repository contains a 24-hour-ahead PJM load forecasting pipeline with a post-forecast constrained dispatch layer.
+This repository contains a 24-hour future load forecasting pipeline with a post-forecast constrained dispatch layer.
 
 ## Run
 
@@ -18,7 +18,7 @@ Run the pipeline from the repository root (using venv for dependencies):
 
 ## Outputs
 
-The pipeline writes artifacts under `results/`:
+The pipeline writes outputs under `results/`:
 
 - `metrics/pre_constraint_layer_forecast_metrics.csv`
 - `metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv`
@@ -35,4 +35,4 @@ The pipeline writes artifacts under `results/`:
 - `figures/pre_constraint_error/`
 - `figures/post_constraint_analysis/`
 
-The models are Persistence, Ordinary Least Squares, Ridge regression, Lasso regression, a base residual MLP neural network, and a weather-enhanced residual MLP neural network.
+The models are Persistence, Ordinary Least Squares, Ridge regression, Lasso regression, residual MLP neural network, and weather residual MLP neural network.

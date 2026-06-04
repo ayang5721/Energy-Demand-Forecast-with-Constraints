@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 
@@ -51,22 +49,22 @@ class ModelPreprocessor:
         for col in self.categorical_cols:
             self.categories_[col] = sorted(X[col].astype(str).dropna().unique().tolist())
 
-        numeric = X[self.numeric_cols].astype(float)
-        self.numeric_mean_ = numeric.mean()
-        self.numeric_scale_ = numeric.std(ddof=0).replace(0.0, 1.0)
+        nums = X[self.numeric_cols].astype(float)
+        self.numeric_mean_ = nums.mean()
+        self.numeric_scale_ = nums.std(ddof=0).replace(0.0, 1.0)
         return self
 
     def transform(self, X: pd.DataFrame) -> np.ndarray:
-        columns = []
+        cols = []
         for col in self.categorical_cols:
             values = X[col].astype(str).to_numpy()
             for category in self.categories_[col]:
-                columns.append((values == category).astype(float))
+                cols.append((values == category).astype(float))
 
-        numeric = X[self.numeric_cols].astype(float)
-        scaled_numeric = ((numeric - self.numeric_mean_) / self.numeric_scale_).to_numpy()
-        columns.extend(scaled_numeric[:, idx] for idx in range(scaled_numeric.shape[1]))
-        return np.column_stack(columns)
+        nums = X[self.numeric_cols].astype(float)
+        scaled = ((nums - self.numeric_mean_) / self.numeric_scale_).to_numpy()
+        cols.extend(scaled[:, idx] for idx in range(scaled.shape[1]))
+        return np.column_stack(cols)
 
     def fit_transform(self, X: pd.DataFrame) -> np.ndarray:
         return self.fit(X).transform(X)
@@ -111,17 +109,17 @@ class LinearModel:
         return self.intercept_ + transformed @ self.coef_
 
     def _fit_ols(self, X: np.ndarray, y: np.ndarray) -> None:
-        design = np.column_stack([np.ones(X.shape[0]), X])
-        params, *_ = np.linalg.lstsq(design, y, rcond=None)
+        X1 = np.column_stack([np.ones(X.shape[0]), X])
+        params, *_ = np.linalg.lstsq(X1, y, rcond=None)
         self.intercept_ = float(params[0])
         self.coef_ = params[1:]
 
     def _fit_ridge(self, X: np.ndarray, y: np.ndarray) -> None:
-        design = np.column_stack([np.ones(X.shape[0]), X])
-        penalty = np.eye(design.shape[1])
+        X1 = np.column_stack([np.ones(X.shape[0]), X])
+        penalty = np.eye(X1.shape[1])
         penalty[0, 0] = 0.0
-        left = design.T @ design + self.alpha * penalty
-        right = design.T @ y
+        left = X1.T @ X1 + self.alpha * penalty
+        right = X1.T @ y
         params = np.linalg.solve(left, right)
         self.intercept_ = float(params[0])
         self.coef_ = params[1:]
@@ -130,7 +128,7 @@ class LinearModel:
         n_rows, n_features = X.shape
         coef = np.zeros(n_features)
         intercept = float(np.mean(y))
-        prediction = np.full(n_rows, intercept)
+        pred = np.full(n_rows, intercept)
         feature_norms = np.mean(X * X, axis=0)
         feature_norms = np.where(feature_norms == 0.0, 1.0, feature_norms)
 
@@ -139,15 +137,15 @@ class LinearModel:
             old_intercept = intercept
             old_coef = coef.copy()
 
-            intercept = float(np.mean(y - (prediction - intercept)))
-            prediction += intercept - old_intercept
+            intercept = float(np.mean(y - (pred - intercept)))
+            pred += intercept - old_intercept
 
             for idx in range(n_features):
-                prediction_without_feature = prediction - X[:, idx] * coef[idx]
-                partial_residual = y - prediction_without_feature
-                rho = float(np.mean(X[:, idx] * partial_residual))
+                pred_without_feature = pred - X[:, idx] * coef[idx]
+                partial = y - pred_without_feature
+                rho = float(np.mean(X[:, idx] * partial))
                 new_coef = _soft_threshold(rho, self.alpha) / feature_norms[idx]
-                prediction = prediction_without_feature + X[:, idx] * new_coef
+                pred = pred_without_feature + X[:, idx] * new_coef
                 coef[idx] = new_coef
 
             max_change = max(
@@ -217,28 +215,28 @@ class ResidualNeuralNetworkModel:
             self.biases_.append(np.zeros(fan_out))
 
     def _forward(self, X: np.ndarray) -> tuple[list[np.ndarray], list[np.ndarray]]:
-        activations = [X]
-        pre_activations = []
+        acts = [X]
+        pre = []
         current = X
         for idx, (weights, bias) in enumerate(zip(self.weights_, self.biases_)):
             z = current @ weights + bias
-            pre_activations.append(z)
+            pre.append(z)
             if idx == len(self.weights_) - 1:
                 current = z
             else:
                 current = self._relu(z)
-            activations.append(current)
-        return activations, pre_activations
+            acts.append(current)
+        return acts, pre
 
     def _predict_scaled_residual(self, X: np.ndarray) -> np.ndarray:
-        activations, _ = self._forward(X)
-        return activations[-1].ravel()
+        acts, _ = self._forward(X)
+        return acts[-1].ravel()
 
     def _loss(self, X: np.ndarray, y: np.ndarray) -> float:
         pred = self._predict_scaled_residual(X)
-        mse_loss = 0.5 * float(np.mean((pred - y) ** 2))
-        l2_loss = 0.5 * self.alpha * sum(float(np.sum(weights * weights)) for weights in self.weights_) / len(X)
-        return mse_loss + l2_loss
+        mse = 0.5 * float(np.mean((pred - y) ** 2))
+        l2 = 0.5 * self.alpha * sum(float(np.sum(weights * weights)) for weights in self.weights_) / len(X)
+        return mse + l2
 
     def _backward(
         self,
@@ -271,25 +269,25 @@ class ResidualNeuralNetworkModel:
             X_val, y_val = None, None
 
         self._initialize_parameters(n_features, rng)
-        first_moments_w = [np.zeros_like(weights) for weights in self.weights_]
-        second_moments_w = [np.zeros_like(weights) for weights in self.weights_]
-        first_moments_b = [np.zeros_like(bias) for bias in self.biases_]
-        second_moments_b = [np.zeros_like(bias) for bias in self.biases_]
+        m_w = [np.zeros_like(weights) for weights in self.weights_]
+        v_w = [np.zeros_like(weights) for weights in self.weights_]
+        m_b = [np.zeros_like(bias) for bias in self.biases_]
+        v_b = [np.zeros_like(bias) for bias in self.biases_]
         beta1 = 0.9
         beta2 = 0.999
         epsilon = 1e-8
         step = 0
-        best_validation_loss = np.inf
+        best_val_loss = np.inf
         best_weights = [weights.copy() for weights in self.weights_]
         best_biases = [bias.copy() for bias in self.biases_]
-        epochs_without_improvement = 0
+        stale_epochs = 0
 
         for epoch in range(1, self.max_iter + 1):
             for start in range(0, len(X_fit), self.batch_size):
                 indices = rng.permutation(len(X_fit)) if start == 0 else indices
-                batch_indices = indices[start : start + self.batch_size]
-                X_batch = X_fit[batch_indices]
-                y_batch = y_fit[batch_indices]
+                ix = indices[start : start + self.batch_size]
+                X_batch = X_fit[ix]
+                y_batch = y_fit[ix]
                 activations, pre_activations = self._forward(X_batch)
                 weight_grads, bias_grads = self._backward(
                     activations,
@@ -300,40 +298,40 @@ class ResidualNeuralNetworkModel:
 
                 step += 1
                 for idx in range(len(self.weights_)):
-                    first_moments_w[idx] = beta1 * first_moments_w[idx] + (1.0 - beta1) * weight_grads[idx]
-                    second_moments_w[idx] = (
-                        beta2 * second_moments_w[idx] + (1.0 - beta2) * (weight_grads[idx] ** 2)
+                    m_w[idx] = beta1 * m_w[idx] + (1.0 - beta1) * weight_grads[idx]
+                    v_w[idx] = (
+                        beta2 * v_w[idx] + (1.0 - beta2) * (weight_grads[idx] ** 2)
                     )
-                    first_moments_b[idx] = beta1 * first_moments_b[idx] + (1.0 - beta1) * bias_grads[idx]
-                    second_moments_b[idx] = (
-                        beta2 * second_moments_b[idx] + (1.0 - beta2) * (bias_grads[idx] ** 2)
+                    m_b[idx] = beta1 * m_b[idx] + (1.0 - beta1) * bias_grads[idx]
+                    v_b[idx] = (
+                        beta2 * v_b[idx] + (1.0 - beta2) * (bias_grads[idx] ** 2)
                     )
 
-                    corrected_first_w = first_moments_w[idx] / (1.0 - beta1**step)
-                    corrected_second_w = second_moments_w[idx] / (1.0 - beta2**step)
-                    corrected_first_b = first_moments_b[idx] / (1.0 - beta1**step)
-                    corrected_second_b = second_moments_b[idx] / (1.0 - beta2**step)
+                    mw_hat = m_w[idx] / (1.0 - beta1**step)
+                    vw_hat = v_w[idx] / (1.0 - beta2**step)
+                    mb_hat = m_b[idx] / (1.0 - beta1**step)
+                    vb_hat = v_b[idx] / (1.0 - beta2**step)
 
                     self.weights_[idx] -= (
-                        self.learning_rate_init * corrected_first_w / (np.sqrt(corrected_second_w) + epsilon)
+                        self.learning_rate_init * mw_hat / (np.sqrt(vw_hat) + epsilon)
                     )
                     self.biases_[idx] -= (
-                        self.learning_rate_init * corrected_first_b / (np.sqrt(corrected_second_b) + epsilon)
+                        self.learning_rate_init * mb_hat / (np.sqrt(vb_hat) + epsilon)
                     )
 
             self.n_iter_ = epoch
             self.loss_curve_.append(self._loss(X_fit, y_fit))
-            validation_loss = self._loss(X_val, y_val) if X_val is not None else self.loss_curve_[-1]
-            self.validation_loss_curve_.append(validation_loss)
+            val_loss = self._loss(X_val, y_val) if X_val is not None else self.loss_curve_[-1]
+            self.validation_loss_curve_.append(val_loss)
 
-            if validation_loss < best_validation_loss - self.tol:
-                best_validation_loss = validation_loss
+            if val_loss < best_val_loss - self.tol:
+                best_val_loss = val_loss
                 best_weights = [weights.copy() for weights in self.weights_]
                 best_biases = [bias.copy() for bias in self.biases_]
-                epochs_without_improvement = 0
+                stale_epochs = 0
             else:
-                epochs_without_improvement += 1
-                if epochs_without_improvement >= self.n_iter_no_change:
+                stale_epochs += 1
+                if stale_epochs >= self.n_iter_no_change:
                     self.converged_ = True
                     break
 
@@ -388,34 +386,34 @@ def train_neural_network(X_train, y_train, categorical_cols, numeric_cols) -> Re
 
 
 def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
-    rows = []
+    rows = list()
     best_model = None
     best_alpha = None
-    best_rmse = np.inf
+    best = np.inf
     for alpha in alpha_grid:
         model = train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols)
         pred = model.predict(X_val)
         val_rmse = rmse(y_val, pred)
         rows.append({"alpha": alpha, "validation_rmse": val_rmse})
-        if val_rmse < best_rmse:
-            best_rmse = val_rmse
+        if val_rmse < best:
+            best = val_rmse
             best_alpha = alpha
             best_model = model
     return best_model, best_alpha, pd.DataFrame(rows)
 
 
 def tune_lasso(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
-    rows = []
+    rows = list()
     best_model = None
     best_alpha = None
-    best_rmse = np.inf
+    best = np.inf
     for alpha in alpha_grid:
         model = train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols)
         pred = model.predict(X_val)
         val_rmse = rmse(y_val, pred)
         rows.append({"alpha": alpha, "validation_rmse": val_rmse})
-        if val_rmse < best_rmse:
-            best_rmse = val_rmse
+        if val_rmse < best:
+            best = val_rmse
             best_alpha = alpha
             best_model = model
     return best_model, best_alpha, pd.DataFrame(rows)

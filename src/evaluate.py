@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
@@ -14,10 +12,10 @@ def rmse(y_true, y_pred) -> float:
 
 
 def mape(y_true, y_pred) -> float:
-    true = np.asarray(y_true, dtype=float)
+    y = np.asarray(y_true, dtype=float)
     pred = np.asarray(y_pred, dtype=float)
-    denom = np.where(true == 0, np.finfo(float).eps, true)
-    return float(np.mean(np.abs((true - pred) / denom)) * 100)
+    denom = np.where(y == 0, np.finfo(float).eps, y)
+    return float(np.mean(np.abs((y - pred) / denom)) * 100)
 
 
 def bias(y_true, y_pred) -> float:
@@ -34,9 +32,9 @@ def compute_metrics(y_true, y_pred) -> dict:
 
 
 def _metrics_series(group: pd.DataFrame) -> pd.Series:
-    metrics = compute_metrics(group["true_load_mw"], group["predicted_load_mw"])
-    metrics["n"] = len(group)
-    return pd.Series(metrics)
+    row = compute_metrics(group["true_load_mw"], group["predicted_load_mw"])
+    row["n"] = len(group)
+    return pd.Series(row)
 
 
 def make_metrics_table(predictions_df: pd.DataFrame) -> pd.DataFrame:
