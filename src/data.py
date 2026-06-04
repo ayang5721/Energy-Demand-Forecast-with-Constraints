@@ -10,6 +10,56 @@ def load_raw_data(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def load_weather_data(path: str) -> pd.DataFrame:
+    """Read Kentucky hourly weather data and return normalized timestamp/features."""
+    weather = pd.read_csv(path, skiprows=3)
+    weather = weather.rename(
+        columns={
+            "time": "timestamp_utc",
+            "temperature_2m (°C)": "temperature_c",
+            "relative_humidity_2m (%)": "humidity_pct",
+        }
+    )
+    weather["timestamp_utc"] = pd.to_datetime(weather["timestamp_utc"], errors="coerce")
+    weather["temperature_c"] = pd.to_numeric(weather["temperature_c"], errors="coerce")
+    weather["humidity_pct"] = pd.to_numeric(weather["humidity_pct"], errors="coerce")
+    weather = weather.dropna(subset=["timestamp_utc", "temperature_c", "humidity_pct"])
+    weather = weather.drop_duplicates(subset=["timestamp_utc"])
+    weather = weather.sort_values("timestamp_utc").reset_index(drop=True)
+    return weather[["timestamp_utc", "temperature_c", "humidity_pct"]]
+
+
+def filter_weather_to_load_range(
+    weather_df: pd.DataFrame,
+    load_df: pd.DataFrame,
+    lag_hours: int = 24,
+) -> pd.DataFrame:
+    """Keep weather rows needed for the load-data period and validate coverage."""
+    min_load_timestamp = load_df["timestamp_utc"].min()
+    max_load_timestamp = load_df["timestamp_utc"].max()
+    min_weather_timestamp = min_load_timestamp - pd.Timedelta(hours=lag_hours)
+
+    filtered = weather_df[
+        (weather_df["timestamp_utc"] >= min_weather_timestamp)
+        & (weather_df["timestamp_utc"] <= max_load_timestamp)
+    ].copy()
+
+    weather_timestamps = set(filtered["timestamp_utc"])
+    load_timestamps = set(load_df["timestamp_utc"].dropna().unique())
+    missing_issue_timestamps = sorted(load_timestamps - weather_timestamps)
+    if missing_issue_timestamps:
+        first_missing = missing_issue_timestamps[0]
+        raise ValueError(f"Weather data is missing issue-time coverage starting at {first_missing}.")
+
+    lag_timestamps = {timestamp - pd.Timedelta(hours=lag_hours) for timestamp in load_timestamps}
+    missing_lag_timestamps = sorted(lag_timestamps - weather_timestamps)
+    if missing_lag_timestamps:
+        first_missing = missing_lag_timestamps[0]
+        raise ValueError(f"Weather data is missing {lag_hours}-hour lag coverage starting at {first_missing}.")
+
+    return filtered.reset_index(drop=True)
+
+
 def _to_bool(series: pd.Series) -> pd.Series:
     """Convert common boolean-like values to pandas booleans."""
     if pd.api.types.is_bool_dtype(series):
@@ -23,7 +73,7 @@ def _to_bool(series: pd.Series) -> pd.Series:
 
 
 def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean raw PJM load data and return standard milestone columns."""
+    """Clean raw PJM load data and return standard modeling columns."""
     cleaned = df.copy()
     cleaned.columns = cleaned.columns.str.strip().str.lower()
 

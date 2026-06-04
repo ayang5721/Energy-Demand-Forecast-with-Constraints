@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from sklearn.neural_network import MLPRegressor
 
 from evaluate import rmse
 
@@ -24,6 +25,12 @@ NUMERIC_COLUMNS = [
     "load_lag_48",
     "rolling_mean_24",
     "rolling_std_24",
+]
+WEATHER_NUMERIC_COLUMNS = NUMERIC_COLUMNS + [
+    "temperature_c",
+    "humidity_pct",
+    "temperature_lag_24",
+    "humidity_lag_24",
 ]
 
 
@@ -166,6 +173,48 @@ class LinearModel:
         self.coef_ = coef
 
 
+class ResidualNeuralNetworkModel:
+    """Residual neural network anchored to the 24-hour persistence forecast."""
+
+    def __init__(
+        self,
+        categorical_cols,
+        numeric_cols,
+        hidden_layer_sizes: tuple[int, ...] = (64, 32),
+        alpha: float = 0.01,
+        learning_rate_init: float = 0.0001,
+        batch_size: int = 128,
+        max_iter: int = 600,
+        random_state: int = 42,
+    ):
+        self.preprocessor = ModelPreprocessor(categorical_cols, numeric_cols)
+        self.model = MLPRegressor(
+            hidden_layer_sizes=hidden_layer_sizes,
+            activation="relu",
+            solver="adam",
+            alpha=alpha,
+            batch_size=batch_size,
+            learning_rate_init=learning_rate_init,
+            max_iter=max_iter,
+            early_stopping=True,
+            validation_fraction=0.10,
+            n_iter_no_change=10,
+            random_state=random_state,
+        )
+
+    def fit(self, X_train: pd.DataFrame, y_train):
+        X = self.preprocessor.fit_transform(X_train)
+        y = np.asarray(y_train, dtype=float)
+        residual = y - X_train["load_mw"].to_numpy(dtype=float)
+        self.model.fit(X, residual)
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        transformed = self.preprocessor.transform(X)
+        residual_pred = self.model.predict(transformed)
+        return X["load_mw"].to_numpy(dtype=float) + residual_pred
+
+
 def get_preprocessor(categorical_cols, numeric_cols) -> ModelPreprocessor:
     """Return the project preprocessor."""
     return ModelPreprocessor(categorical_cols, numeric_cols)
@@ -191,6 +240,12 @@ def train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols) -> Line
 def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> LinearModel:
     """Train Lasso regression with explicit coordinate descent."""
     model = LinearModel("lasso", categorical_cols, numeric_cols, alpha=alpha, max_iter=500)
+    return model.fit(X_train, y_train)
+
+
+def train_neural_network(X_train, y_train, categorical_cols, numeric_cols) -> ResidualNeuralNetworkModel:
+    """Train the residual MLP neural network."""
+    model = ResidualNeuralNetworkModel(categorical_cols, numeric_cols)
     return model.fit(X_train, y_train)
 
 

@@ -1,4 +1,4 @@
-"""Run the CS229 milestone load forecasting pipeline."""
+"""Run the load forecasting and constrained dispatch pipeline."""
 
 from __future__ import annotations
 
@@ -12,10 +12,25 @@ from constraints import (
     run_constrained_dispatch,
     validate_constraint_costs,
 )
-from data import clean_pjm_data, load_raw_data, validate_clean_data
+from data import (
+    clean_pjm_data,
+    filter_weather_to_load_range,
+    load_raw_data,
+    load_weather_data,
+    validate_clean_data,
+)
 from evaluate import make_error_by_hour, make_metrics_by_load_area, make_metrics_table
-from features import make_feature_dataset
-from models import CATEGORICAL_COLUMNS, NUMERIC_COLUMNS, predict_persistence, train_ols, tune_lasso, tune_ridge
+from features import FEATURE_COLUMNS, WEATHER_FEATURE_COLUMNS, make_feature_dataset
+from models import (
+    CATEGORICAL_COLUMNS,
+    NUMERIC_COLUMNS,
+    WEATHER_NUMERIC_COLUMNS,
+    predict_persistence,
+    train_neural_network,
+    train_ols,
+    tune_lasso,
+    tune_ridge,
+)
 from operational import aggregate_predictions_to_zone
 from plots import (
     plot_error_by_hour,
@@ -35,11 +50,12 @@ from split import get_feature_target_metadata, time_based_split, validate_split
 
 
 RAW_DATA_PATH = "data/hrl_load_metered.csv"
+WEATHER_DATA_PATH = "data/4_year_kentucky_weather_data.csv"
 RESULTS_DIR = "results"
 
 
 def _make_output_dirs(base_dir: Path) -> dict[str, Path]:
-    """Create and return milestone output directories."""
+    """Create and return output directories."""
     dirs = {
         "metrics": base_dir / "metrics",
         "predictions": base_dir / "predictions",
@@ -86,24 +102,28 @@ def _safe_filename(value: str) -> str:
 
 
 def main() -> None:
-    """Run the full milestone pipeline and save metrics, predictions, and figures."""
+    """Run the full pipeline and save metrics, predictions, and figures."""
     results_dir = Path(RESULTS_DIR)
     dirs = _make_output_dirs(results_dir)
 
     raw = load_raw_data(RAW_DATA_PATH)
+    weather = load_weather_data(WEATHER_DATA_PATH)
     clean = clean_pjm_data(raw)
+    weather = filter_weather_to_load_range(weather, clean)
     clean_summary = validate_clean_data(clean)
     clean.to_csv(dirs["predictions"] / "pre_constraint_layer_cleaned_data_snapshot.csv", index=False)
 
-    feature_df = make_feature_dataset(clean)
+    feature_df = make_feature_dataset(clean, weather)
     feature_df.to_csv(dirs["predictions"] / "pre_constraint_layer_feature_data_snapshot.csv", index=False)
 
     train_df, val_df, test_df = time_based_split(feature_df)
     validate_split(train_df, val_df, test_df)
 
-    X_train, y_train, _ = get_feature_target_metadata(train_df)
-    X_val, y_val, _ = get_feature_target_metadata(val_df)
-    X_test, y_test, test_metadata = get_feature_target_metadata(test_df)
+    X_train, y_train, _ = get_feature_target_metadata(train_df, FEATURE_COLUMNS)
+    X_val, y_val, _ = get_feature_target_metadata(val_df, FEATURE_COLUMNS)
+    X_test, y_test, test_metadata = get_feature_target_metadata(test_df, FEATURE_COLUMNS)
+    X_weather_train, _, _ = get_feature_target_metadata(train_df, WEATHER_FEATURE_COLUMNS)
+    X_weather_test, _, _ = get_feature_target_metadata(test_df, WEATHER_FEATURE_COLUMNS)
 
     print("\nTraining models")
     persistence_test_pred = predict_persistence(X_test)
@@ -113,6 +133,21 @@ def main() -> None:
     ols_model = train_ols(X_train, y_train, CATEGORICAL_COLUMNS, NUMERIC_COLUMNS)
     ols_test_pred = ols_model.predict(X_test)
     print("OLS complete.")
+
+    print("Training Neural Network...")
+    neural_network_model = train_neural_network(X_train, y_train, CATEGORICAL_COLUMNS, NUMERIC_COLUMNS)
+    neural_network_test_pred = neural_network_model.predict(X_test)
+    print("Neural Network complete.")
+
+    print("Training Neural Network + Weather...")
+    weather_neural_network_model = train_neural_network(
+        X_weather_train,
+        y_train,
+        CATEGORICAL_COLUMNS,
+        WEATHER_NUMERIC_COLUMNS,
+    )
+    weather_neural_network_test_pred = weather_neural_network_model.predict(X_weather_test)
+    print("Neural Network + Weather complete.")
 
     print("Tuning Ridge...")
     best_ridge_model, best_alpha, ridge_val_results = tune_ridge(
@@ -146,6 +181,8 @@ def main() -> None:
         [
             _build_prediction_frame(test_metadata, persistence_test_pred, "Persistence"),
             _build_prediction_frame(test_metadata, ols_test_pred, "OLS"),
+            _build_prediction_frame(test_metadata, neural_network_test_pred, "Neural Network"),
+            _build_prediction_frame(test_metadata, weather_neural_network_test_pred, "Neural Network + Weather"),
             _build_prediction_frame(test_metadata, ridge_test_pred, "Ridge"),
             _build_prediction_frame(test_metadata, lasso_test_pred, "Lasso"),
         ],

@@ -1,6 +1,6 @@
 # Energy Demand Forecast with Constraints
 
-This repository contains the CS229 milestone pipeline for 24-hour-ahead PJM load forecasting across all zones and load areas present in the input CSV.
+This repository contains a 24-hour-ahead PJM load forecasting pipeline with a post-forecast constrained dispatch layer.
 
 ## Run
 
@@ -10,7 +10,7 @@ Install dependencies (venv contains dependencies):
 pip install -r requirements.txt
 ```
 
-Run the milestone pipeline from the repository root (using venv for dependencies):
+Run the pipeline from the repository root (using venv for dependencies):
 
 ```bash
 .venv/bin/python -u src/run.py
@@ -18,7 +18,7 @@ Run the milestone pipeline from the repository root (using venv for dependencies
 
 ## Outputs
 
-The pipeline writes all milestone artifacts under `results/milestone/`:
+The pipeline writes artifacts under `results/`:
 
 - `metrics/pre_constraint_layer_forecast_metrics.csv`
 - `metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv`
@@ -35,4 +35,4 @@ The pipeline writes all milestone artifacts under `results/milestone/`:
 - `figures/pre_constraint_error/`
 - `figures/post_constraint_analysis/`
 
-The milestone models are Persistence, Ordinary Least Squares, Ridge regression, and Lasso regression.
+The models are Persistence, Ordinary Least Squares, Ridge regression, Lasso regression, a base residual MLP neural network, and a weather-enhanced residual MLP neural network.

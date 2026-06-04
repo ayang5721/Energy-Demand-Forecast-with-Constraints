@@ -45,9 +45,11 @@ def time_based_split(df: pd.DataFrame, train_frac: float = 0.70, val_frac: float
     return train_df, val_df, test_df
 
 
-def get_feature_target_metadata(df: pd.DataFrame):
+def get_feature_target_metadata(df: pd.DataFrame, feature_columns=None):
     """Return X, y, and metadata dataframes for modeling."""
-    X = df[FEATURE_COLUMNS].copy()
+    if feature_columns is None:
+        feature_columns = FEATURE_COLUMNS
+    X = df[feature_columns].copy()
     y = df["target_load_mw"].copy()
     metadata = df[METADATA_COLUMNS].copy()
     return X, y, metadata

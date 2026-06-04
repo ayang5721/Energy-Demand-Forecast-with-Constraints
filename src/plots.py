@@ -1,4 +1,4 @@
-"""Matplotlib plots for milestone outputs."""
+"""Matplotlib plots for forecast and dispatch outputs."""
 
 from __future__ import annotations
 
@@ -16,10 +16,20 @@ import pandas as pd
 MODEL_STYLES = {
     "Persistence": {"color": "#4C78A8", "linestyle": "--", "linewidth": 1.8, "alpha": 0.9},
     "OLS": {"color": "#F58518", "linestyle": ":", "linewidth": 2.4, "alpha": 0.95},
+    "Neural Network": {"color": "#E45756", "linestyle": "-", "linewidth": 2.0, "alpha": 0.9},
+    "Neural Network + Weather": {"color": "#72B7B2", "linestyle": "-", "linewidth": 2.0, "alpha": 0.9},
     "Ridge": {"color": "#54A24B", "linestyle": "-.", "linewidth": 1.8, "alpha": 0.9},
     "Lasso": {"color": "#B279A2", "linestyle": "-", "linewidth": 1.7, "alpha": 0.85},
 }
-MODEL_ORDER = ["Persistence", "OLS", "Ridge", "Lasso"]
+MODEL_ORDER = ["Persistence", "OLS", "Neural Network", "Neural Network + Weather", "Ridge", "Lasso"]
+
+
+def _ordered_models(df: pd.DataFrame) -> list[str]:
+    """Return known models in preferred order, followed by any new models."""
+    models = df["model"].dropna().unique().tolist()
+    ordered = [model for model in MODEL_ORDER if model in models]
+    ordered.extend(model for model in models if model not in MODEL_ORDER)
+    return ordered
 
 
 def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, load_area=None, max_points=96) -> None:
@@ -49,7 +59,7 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, loa
         color="black",
         linewidth=2.5,
     )
-    for model in MODEL_ORDER:
+    for model in _ordered_models(sample):
         model_df = sample[sample["model"] == model].sort_values("target_timestamp_ept")
         if not model_df.empty:
             ax_load.plot(
@@ -70,7 +80,7 @@ def plot_true_vs_predicted_load_area(predictions_df, output_path, zone=None, loa
     ax_error.set_xlabel("Target timestamp EPT")
     ax_error.set_ylabel("Error MW")
     ax_load.legend(ncol=3)
-    ax_error.legend(ncol=4)
+    ax_error.legend(ncol=3)
     plt.xticks(rotation=30, ha="right")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150)
@@ -105,7 +115,7 @@ def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -
         color="black",
         linewidth=2.5,
     )
-    for model in MODEL_ORDER:
+    for model in _ordered_models(averaged):
         model_df = averaged[averaged["model"] == model].sort_values("target_timestamp_ept")
         if not model_df.empty:
             ax_load.plot(
@@ -126,7 +136,7 @@ def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -
     ax_error.set_xlabel("Target timestamp EPT")
     ax_error.set_ylabel("Error MW")
     ax_load.legend(ncol=3)
-    ax_error.legend(ncol=4)
+    ax_error.legend(ncol=3)
     plt.xticks(rotation=30, ha="right")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150)
@@ -136,7 +146,7 @@ def plot_true_vs_predicted_average(predictions_df, output_path, max_points=96) -
 def plot_error_by_hour(error_by_hour_df, output_path) -> None:
     """Plot pre-constraint mean absolute forecast error by target hour for each model."""
     plt.figure(figsize=(10, 6))
-    for model in MODEL_ORDER:
+    for model in _ordered_models(error_by_hour_df):
         group = error_by_hour_df[error_by_hour_df["model"] == model]
         if group.empty:
             continue
@@ -168,6 +178,7 @@ def plot_forecast_metrics_bar(metrics_df: pd.DataFrame, output_path, metric="rms
     plt.xlabel("Model")
     plt.ylabel(metric.upper())
     plt.title(f"Pre-Constraint Layer: {metric.upper()} by Model")
+    plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150)
@@ -189,6 +200,7 @@ def _plot_post_constraint_metric_bar(
     plt.xlabel("Model")
     plt.ylabel(ylabel)
     plt.title(title)
+    plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150)
@@ -281,6 +293,7 @@ def plot_post_constraint_penalty_cost_stacked(post_metrics_df: pd.DataFrame, out
     plt.xlabel("Model")
     plt.ylabel("Total penalty cost ($)")
     plt.title("Post-Constraint Layer: Penalty Cost Components by Model")
+    plt.xticks(rotation=20, ha="right")
     plt.legend()
     plt.tight_layout()
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -319,7 +332,7 @@ def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_pat
         color="black",
         linewidth=2.5,
     )
-    for model in MODEL_ORDER:
+    for model in _ordered_models(sample):
         model_df = sample[sample["model"] == model].sort_values("target_timestamp_ept")
         if not model_df.empty:
             ax_load.plot(
@@ -340,7 +353,7 @@ def plot_post_constraint_scheduled_vs_true(dispatch_df: pd.DataFrame, output_pat
     ax_error.set_xlabel("Target timestamp EPT")
     ax_error.set_ylabel("Error MW")
     ax_load.legend(ncol=3)
-    ax_error.legend(ncol=4)
+    ax_error.legend(ncol=3)
     plt.xticks(rotation=30, ha="right")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150)
