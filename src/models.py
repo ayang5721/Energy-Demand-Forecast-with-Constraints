@@ -1,10 +1,9 @@
-"""Milestone forecasting models."""
+"""Forecasting models."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.neural_network import MLPRegressor
 
 from evaluate import rmse
 
@@ -174,7 +173,7 @@ class LinearModel:
 
 
 class ResidualNeuralNetworkModel:
-    """Residual neural network anchored to the 24-hour persistence forecast."""
+    """Explicit NumPy residual MLP anchored to the 24-hour persistence forecast."""
 
     def __init__(
         self,
@@ -186,32 +185,186 @@ class ResidualNeuralNetworkModel:
         batch_size: int = 128,
         max_iter: int = 600,
         random_state: int = 42,
+        validation_fraction: float = 0.10,
+        n_iter_no_change: int = 10,
+        tol: float = 1e-4,
     ):
         self.preprocessor = ModelPreprocessor(categorical_cols, numeric_cols)
-        self.model = MLPRegressor(
-            hidden_layer_sizes=hidden_layer_sizes,
-            activation="relu",
-            solver="adam",
-            alpha=alpha,
-            batch_size=batch_size,
-            learning_rate_init=learning_rate_init,
-            max_iter=max_iter,
-            early_stopping=True,
-            validation_fraction=0.10,
-            n_iter_no_change=10,
-            random_state=random_state,
-        )
+        self.hidden_layer_sizes = tuple(hidden_layer_sizes)
+        self.alpha = float(alpha)
+        self.learning_rate_init = float(learning_rate_init)
+        self.batch_size = int(batch_size)
+        self.max_iter = int(max_iter)
+        self.random_state = int(random_state)
+        self.validation_fraction = float(validation_fraction)
+        self.n_iter_no_change = int(n_iter_no_change)
+        self.tol = float(tol)
+        self.weights_: list[np.ndarray] = []
+        self.biases_: list[np.ndarray] = []
+        self.residual_mean_ = 0.0
+        self.residual_scale_ = 1.0
+        self.n_iter_ = 0
+        self.converged_ = False
+        self.loss_curve_: list[float] = []
+        self.validation_loss_curve_: list[float] = []
+
+    @staticmethod
+    def _relu(values: np.ndarray) -> np.ndarray:
+        return np.maximum(0.0, values)
+
+    @staticmethod
+    def _relu_grad(values: np.ndarray) -> np.ndarray:
+        return (values > 0.0).astype(float)
+
+    def _initialize_parameters(self, n_features: int, rng: np.random.Generator) -> None:
+        layer_sizes = [n_features, *self.hidden_layer_sizes, 1]
+        self.weights_ = []
+        self.biases_ = []
+        for fan_in, fan_out in zip(layer_sizes[:-1], layer_sizes[1:]):
+            scale = np.sqrt(2.0 / fan_in)
+            self.weights_.append(rng.normal(loc=0.0, scale=scale, size=(fan_in, fan_out)))
+            self.biases_.append(np.zeros(fan_out))
+
+    def _forward(self, X: np.ndarray) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        activations = [X]
+        pre_activations = []
+        current = X
+        for idx, (weights, bias) in enumerate(zip(self.weights_, self.biases_)):
+            z = current @ weights + bias
+            pre_activations.append(z)
+            if idx == len(self.weights_) - 1:
+                current = z
+            else:
+                current = self._relu(z)
+            activations.append(current)
+        return activations, pre_activations
+
+    def _predict_scaled_residual(self, X: np.ndarray) -> np.ndarray:
+        activations, _ = self._forward(X)
+        return activations[-1].ravel()
+
+    def _loss(self, X: np.ndarray, y: np.ndarray) -> float:
+        pred = self._predict_scaled_residual(X)
+        mse_loss = 0.5 * float(np.mean((pred - y) ** 2))
+        l2_loss = 0.5 * self.alpha * sum(float(np.sum(weights * weights)) for weights in self.weights_) / len(X)
+        return mse_loss + l2_loss
+
+    def _backward(
+        self,
+        activations: list[np.ndarray],
+        pre_activations: list[np.ndarray],
+        y_batch: np.ndarray,
+        n_train: int,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        batch_size = len(y_batch)
+        delta = (activations[-1].ravel() - y_batch)[:, None] / batch_size
+        weight_grads = [np.zeros_like(weights) for weights in self.weights_]
+        bias_grads = [np.zeros_like(bias) for bias in self.biases_]
+
+        for idx in range(len(self.weights_) - 1, -1, -1):
+            weight_grads[idx] = activations[idx].T @ delta + (self.alpha / n_train) * self.weights_[idx]
+            bias_grads[idx] = delta.sum(axis=0)
+            if idx > 0:
+                delta = (delta @ self.weights_[idx].T) * self._relu_grad(pre_activations[idx - 1])
+        return weight_grads, bias_grads
+
+    def _fit_mlp(self, X_train: np.ndarray, y_train: np.ndarray) -> None:
+        rng = np.random.default_rng(self.random_state)
+        n_rows, n_features = X_train.shape
+        n_val = int(n_rows * self.validation_fraction)
+        if n_val > 0:
+            X_fit, y_fit = X_train[:-n_val], y_train[:-n_val]
+            X_val, y_val = X_train[-n_val:], y_train[-n_val:]
+        else:
+            X_fit, y_fit = X_train, y_train
+            X_val, y_val = None, None
+
+        self._initialize_parameters(n_features, rng)
+        first_moments_w = [np.zeros_like(weights) for weights in self.weights_]
+        second_moments_w = [np.zeros_like(weights) for weights in self.weights_]
+        first_moments_b = [np.zeros_like(bias) for bias in self.biases_]
+        second_moments_b = [np.zeros_like(bias) for bias in self.biases_]
+        beta1 = 0.9
+        beta2 = 0.999
+        epsilon = 1e-8
+        step = 0
+        best_validation_loss = np.inf
+        best_weights = [weights.copy() for weights in self.weights_]
+        best_biases = [bias.copy() for bias in self.biases_]
+        epochs_without_improvement = 0
+
+        for epoch in range(1, self.max_iter + 1):
+            for start in range(0, len(X_fit), self.batch_size):
+                indices = rng.permutation(len(X_fit)) if start == 0 else indices
+                batch_indices = indices[start : start + self.batch_size]
+                X_batch = X_fit[batch_indices]
+                y_batch = y_fit[batch_indices]
+                activations, pre_activations = self._forward(X_batch)
+                weight_grads, bias_grads = self._backward(
+                    activations,
+                    pre_activations,
+                    y_batch,
+                    n_train=len(X_fit),
+                )
+
+                step += 1
+                for idx in range(len(self.weights_)):
+                    first_moments_w[idx] = beta1 * first_moments_w[idx] + (1.0 - beta1) * weight_grads[idx]
+                    second_moments_w[idx] = (
+                        beta2 * second_moments_w[idx] + (1.0 - beta2) * (weight_grads[idx] ** 2)
+                    )
+                    first_moments_b[idx] = beta1 * first_moments_b[idx] + (1.0 - beta1) * bias_grads[idx]
+                    second_moments_b[idx] = (
+                        beta2 * second_moments_b[idx] + (1.0 - beta2) * (bias_grads[idx] ** 2)
+                    )
+
+                    corrected_first_w = first_moments_w[idx] / (1.0 - beta1**step)
+                    corrected_second_w = second_moments_w[idx] / (1.0 - beta2**step)
+                    corrected_first_b = first_moments_b[idx] / (1.0 - beta1**step)
+                    corrected_second_b = second_moments_b[idx] / (1.0 - beta2**step)
+
+                    self.weights_[idx] -= (
+                        self.learning_rate_init * corrected_first_w / (np.sqrt(corrected_second_w) + epsilon)
+                    )
+                    self.biases_[idx] -= (
+                        self.learning_rate_init * corrected_first_b / (np.sqrt(corrected_second_b) + epsilon)
+                    )
+
+            self.n_iter_ = epoch
+            self.loss_curve_.append(self._loss(X_fit, y_fit))
+            validation_loss = self._loss(X_val, y_val) if X_val is not None else self.loss_curve_[-1]
+            self.validation_loss_curve_.append(validation_loss)
+
+            if validation_loss < best_validation_loss - self.tol:
+                best_validation_loss = validation_loss
+                best_weights = [weights.copy() for weights in self.weights_]
+                best_biases = [bias.copy() for bias in self.biases_]
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+                if epochs_without_improvement >= self.n_iter_no_change:
+                    self.converged_ = True
+                    break
+
+        self.weights_ = best_weights
+        self.biases_ = best_biases
 
     def fit(self, X_train: pd.DataFrame, y_train):
         X = self.preprocessor.fit_transform(X_train)
         y = np.asarray(y_train, dtype=float)
         residual = y - X_train["load_mw"].to_numpy(dtype=float)
-        self.model.fit(X, residual)
+        self.residual_mean_ = float(np.mean(residual))
+        self.residual_scale_ = float(np.std(residual))
+        if self.residual_scale_ == 0.0:
+            self.residual_scale_ = 1.0
+        scaled_residual = (residual - self.residual_mean_) / self.residual_scale_
+        self._fit_mlp(X, scaled_residual)
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         transformed = self.preprocessor.transform(X)
-        residual_pred = self.model.predict(transformed)
+        scaled_residual_pred = self._predict_scaled_residual(transformed)
+        residual_pred = scaled_residual_pred * self.residual_scale_ + self.residual_mean_
         return X["load_mw"].to_numpy(dtype=float) + residual_pred
 
 

@@ -1,0 +1,659 @@
+# Project Analysis
+
+## 1. Introduction
+
+### 1.1 Project Summary
+
+- Project title / inferred name:
+  - "Energy Demand Forecast with Constraints" from README.md.
+  - A more descriptive inferred title is: "24-Hour-Ahead PJM Load Forecasting with Constraint-Aware Dispatch Evaluation."
+
+- Problem being solved:
+  - The repo predicts hourly electricity load 24 hours ahead for PJM zones/load areas, then evaluates how those forecasts affect a synthetic generation dispatch decision.
+  - Evidence: README.md describes "a 24-hour-ahead PJM load forecasting pipeline with a post-forecast constrained dispatch layer"; src/run.py implements the full pipeline.
+
+- Core idea:
+  - Convert hourly PJM load data into supervised examples where features at time t predict load at time t + 24 hours.
+  - Compare several forecasting models, aggregate load-area predictions to zone-level demand, and run a dispatch layer to measure operational consequences.
+
+- Main inputs:
+  - Load data: data/hrl_load_metered.csv.
+  - Weather data: data/4_year_kentucky_weather_data.csv.
+  - Code paths: src/data.py loads and cleans data; src/features.py creates forecasting features.
+
+- Main outputs:
+  - Forecast metrics: results/metrics/pre_constraint_layer_forecast_metrics.csv.
+  - Metrics by load area: results/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv.
+  - Hourly error metrics: results/metrics/pre_constraint_layer_error_by_hour.csv.
+  - Post-dispatch metrics: results/metrics/post_constraint_layer_dispatch_metrics.csv and results/metrics/pre_post_constraint_layer_summary.csv.
+  - Predictions: results/predictions/pre_constraint_layer_test_predictions.csv and results/predictions/post_constraint_layer_dispatch_hourly.csv.
+  - Plots: results/figures/pre_constraint_load_area/, results/figures/pre_constraint_error/, and results/figures/post_constraint_analysis/.
+
+- Models / algorithms:
+  - Persistence baseline.
+  - Ordinary least squares.
+  - Ridge regression.
+  - Lasso regression.
+  - Base residual MLP neural network.
+  - Weather-enhanced residual MLP neural network.
+  - Synthetic greedy dispatch constraint layer.
+  - Evidence: src/models.py, src/constraints.py, src/run.py.
+
+### 1.2 Problem and Importance
+
+- Real-world or technical problem:
+  - Short-term electricity demand forecasting and evaluation of what happens when forecasts are used for operational scheduling.
+
+- Why it matters:
+  - Underprediction can cause under-generation, which is expensive and reliability-relevant.
+  - Overprediction can cause over-generation, which wastes generation and increases operating cost.
+  - The repo explicitly measures under-generation, over-generation, penalty cost, operational cost, and constraint regret in src/constraints.py.
+
+- Who would care:
+  - Grid operators, utilities, energy analysts, market operators, and researchers studying forecast-to-decision pipelines.
+
+- What goes wrong if solved poorly:
+  - Forecast error can turn into wrong scheduled generation.
+  - Under-generation receives a larger synthetic penalty than over-generation: 500 dollars/MWh vs 50 dollars/MWh in src/constraints.py.
+
+- Exact system input:
+  - Rows of hourly metered load by timestamp, zone, and load area.
+  - Hourly Kentucky weather data with temperature and relative humidity.
+
+- Exact system output:
+  - 24-hour-ahead predicted load in MW for each zone/load-area row.
+  - Aggregated zone-level forecasts.
+  - Synthetic scheduled generation and cost/violation metrics.
+
+- Task type:
+  - Forecasting / regression for load prediction.
+  - Post-processing / optimization-style dispatch evaluation for operating decisions.
+
+- Assumptions made in repo:
+  - Forecast horizon is exactly 24 hours.
+  - Lag and target matches are timestamp-exact.
+  - One weather file is used for all zones/load areas.
+  - Dispatch fleet is synthetic and sized from observed peak true zone load.
+  - Under- and over-generation penalties are fixed constants.
+  - Weather features use issue-time weather and 24-hour-lag weather, not target-time weather.
+
+### 1.3 Motivation and Background
+
+- Motivation:
+  - The repo tries to answer not only "which model has the best forecast metric?" but also "which forecast works best once used for dispatch?"
+  - Evidence: repo_explanation.md says the project has pre-constraint and post-constraint layers.
+
+- Domain context:
+  - Electricity load is measured in MW.
+  - Forecasts are made for individual load areas and then aggregated by zone.
+  - Dispatch means deciding how much generation to schedule to meet demand.
+
+- Baseline workflow without this project:
+  - Use a simple persistence forecast: predict tomorrow's load using the current load at issue time t.
+  - Evidence: predict_persistence() in src/models.py returns X["load_mw"].
+
+- What the project improves:
+  - It compares multiple forecasting models instead of relying only on persistence.
+  - It evaluates operational cost and violations, not just prediction error.
+
+- Important terms:
+  - Forecast horizon: target load is load at t + 24 hours.
+  - Residual prediction: neural networks learn target_load_mw - current load_mw, then add current load_mw back.
+  - Constraint regret: total operational cost minus oracle operational cost.
+
+## 2. Related Work
+
+### 2.1 Related Work and Existing Approaches
+
+- Prior papers / tools / systems mentioned:
+  - Not found in repo as formal citations.
+  - Libraries are used but not cited formally: pandas, numpy, scikit-learn, matplotlib from requirements.txt and imports in src/.
+  - PJM is named in README.md and data.py, but a full dataset citation or URL is not included.
+
+- Likely related approach categories, marked as needs external citation:
+  - Persistence baselines for load forecasting: needs external citation.
+  - Linear regression / regularized regression for short-term load forecasting: needs external citation.
+  - Neural-network load forecasting with MLPs or deeper models: needs external citation.
+  - Weather-aware load forecasting: needs external citation.
+  - Unit commitment / economic dispatch / forecast-to-decision evaluation: needs external citation.
+
+- Strengths and weaknesses of approach categories:
+  - Persistence is simple and strong for hourly load but cannot model systematic calendar/weather effects.
+  - Linear models are interpretable and fast but may miss nonlinear load-weather behavior.
+  - Ridge/Lasso regularization helps control coefficients but still stays linear in engineered features.
+  - MLP neural networks can model nonlinear effects but are slower, less interpretable, and may have convergence issues.
+  - Synthetic dispatch reveals decision impact but is not a real grid dispatch model.
+
+- Similarity to previous approaches:
+  - The repo follows a standard supervised time-series forecasting setup with chronological splitting, lag features, and regression metrics.
+
+- Difference:
+  - The repo connects forecast metrics to a simple dispatch layer, so a model can be judged by operational cost and constraint regret as well as RMSE/MAE.
+
+- State of the art:
+  - Not found in repo.
+  - A complete report would need external citations for modern load forecasting models, weather-based forecasting, and dispatch optimization.
+
+- Does the repo include at least five relevant references?
+  - No. Not found in repo.
+  - Missing reference areas: PJM dataset source, weather dataset source, short-term load forecasting literature, MLP/scikit-learn documentation, economic dispatch / unit commitment literature, metric definitions.
+
+## 3. Dataset and Features
+
+### 3.1 Dataset and Data Pipeline
+
+- Datasets used:
+  - data/hrl_load_metered.csv: hourly PJM load data.
+  - data/4_year_kentucky_weather_data.csv: hourly temperature and relative humidity.
+  - data/Temp_humidity_kentucky.csv also exists, but src/run.py uses data/4_year_kentucky_weather_data.csv.
+
+- Data source:
+  - PJM is implied by filenames and code comments.
+  - Weather appears to be Open-Meteo-style because of the metadata preamble and column names, but the repo does not cite the source.
+  - Dataset source URLs: Not found in repo.
+
+- Size and range from saved outputs:
+  - Cleaned load rows: 90,120.
+  - Unique load timestamps: 8,760.
+  - Cleaned load range: 2025-06-01 04:00 UTC to 2026-06-01 03:00 UTC.
+  - Zones: AEP, AP, ATSI, CE, DEOK, EKPC, OVEC.
+  - Load areas: AEPAPT, AEPIMP, AEPKPT, AEPOPT, AP, CE, DEOK, EKPC, OE, OVEC, PAPWR.
+  - Feature rows after dropping incomplete lag/target/weather rows: 88,944.
+  - Feature timestamp range: 2025-06-03 04:00 UTC to 2026-05-31 03:00 UTC.
+  - Target timestamp range: 2025-06-04 04:00 UTC to 2026-06-01 03:00 UTC.
+  - Evidence: results/predictions/pre_constraint_layer_cleaned_data_snapshot.csv and pre_constraint_layer_feature_data_snapshot.csv.
+
+- Weather data:
+  - Raw weather rows: 35,088.
+  - Raw weather range: 2022-06-01T00:00 to 2026-06-01T23:00.
+  - src/data.py filters weather to the load period plus a 24-hour lookback using filter_weather_to_load_range().
+
+- Unit of observation:
+  - One row is one hourly load measurement for one zone/load-area series.
+  - One model example predicts that same zone/load-area load 24 hours later.
+
+- Split:
+  - Implemented in src/split.py.
+  - Chronological within each zone/load-area series.
+  - Fractions: 70% train, 15% validation, 15% test.
+  - Saved feature split sizes: 62,256 train rows, 13,341 validation rows, 13,347 test rows.
+  - Unique timestamps: 6,081 train, 2,115 validation, 2,411 test.
+  - Note: global timestamp ranges overlap because the split is performed per zone/load-area, and not every series has identical coverage.
+
+- Preprocessing:
+  - Parse UTC and EPT timestamps.
+  - Rename mkt_region to market_region and mw to load_mw.
+  - Convert MW to numeric.
+  - Convert is_verified to booleans.
+  - Strip text columns.
+  - Drop rows missing required timestamp, zone, load_area, or load_mw.
+  - Drop duplicate timestamp/zone/load-area rows.
+  - Sort chronologically.
+  - Evidence: clean_pjm_data() in src/data.py.
+
+- Missing values:
+  - Required missing values are dropped in clean_pjm_data().
+  - Rows without complete lags, rolling stats, weather features, or exact 24-hour target are dropped in make_feature_dataset().
+
+- Normalization / scaling / encoding:
+  - Categorical zone/load_area are one-hot encoded in ModelPreprocessor.
+  - Numeric model features are standardized using training-set mean and standard deviation in ModelPreprocessor.
+
+- Data leakage risks:
+  - Target is exact t + 24 load; current and lag features are from t or before.
+  - Weather uses issue-time weather and 24-hour-lag weather, not target-time weather.
+  - Chronological split avoids future leakage within each series.
+  - Potential limitation: weather at issue time assumes weather observations are available at forecast issue time, which is reasonable for retrospective experiments but may differ from operational forecasting if only forecasted weather is available.
+
+### 3.2 Features
+
+- Raw variables used:
+  - timestamp_utc, timestamp_ept, zone, load_area, load_mw.
+  - Weather: temperature_2m and relative_humidity_2m converted to temperature_c and humidity_pct.
+
+- Engineered base features:
+  - hour, day_of_week, month, is_weekend.
+  - sin_hour, cos_hour.
+  - sin_day_of_week, cos_day_of_week.
+  - load_mw at issue time.
+  - load_lag_1, load_lag_24, load_lag_48.
+  - rolling_mean_24, rolling_std_24.
+  - Evidence: FEATURE_COLUMNS in src/features.py.
+
+- Weather features:
+  - temperature_c, humidity_pct.
+  - temperature_lag_24, humidity_lag_24.
+  - Evidence: WEATHER_COLUMNS in src/features.py and WEATHER_NUMERIC_COLUMNS in src/models.py.
+
+- Feature selection:
+  - Manual feature engineering, not automatic feature selection.
+
+- Transformations:
+  - Cyclical encodings for hour and day of week.
+  - One-hot encoding for zone/load_area.
+  - Standardization of numeric columns.
+
+- Features that seem important:
+  - Current load and recent lags are likely most important because persistence has the best MAE/MAPE in saved metrics.
+  - Calendar features help linear models and NNs model regular daily/weekly patterns.
+  - Weather is included, but current saved results do not show it helping the neural network.
+
+- Missing important features:
+  - Holidays and special events.
+  - Longer lags such as 168-hour weekly lag.
+  - Rolling 168-hour statistics.
+  - Forecasted target-hour weather.
+  - Zone-specific weather instead of one Kentucky weather series for all zones.
+  - Real generator/fuel/market data for dispatch.
+
+## 4. Methods
+
+### 4.1 Methods and Algorithms
+
+- Persistence:
+  - Prediction equals current load_mw at issue time t.
+  - Implemented by predict_persistence() in src/models.py.
+
+- OLS:
+  - Linear regression with normal equation / least squares.
+  - Implemented by LinearModel._fit_ols() in src/models.py.
+
+- Ridge:
+  - Linear regression with L2 penalty alpha.
+  - Objective is squared error plus alpha times coefficient penalty.
+  - Intercept is not penalized.
+  - Implemented by LinearModel._fit_ridge().
+
+- Lasso:
+  - Linear regression with L1 penalty alpha.
+  - Implemented with coordinate descent and soft-thresholding in LinearModel._fit_lasso().
+
+- Base residual neural network:
+  - MLPRegressor with hidden layers (64, 32), ReLU activation, Adam optimizer.
+  - It predicts residual = target_load_mw - current load_mw.
+  - Final prediction = current load_mw + predicted residual.
+  - Implemented by ResidualNeuralNetworkModel in src/models.py.
+
+- Weather residual neural network:
+  - Same residual MLP architecture.
+  - Uses WEATHER_FEATURE_COLUMNS / WEATHER_NUMERIC_COLUMNS, adding temperature and humidity features.
+  - Implemented by same train_neural_network() call with weather features in src/run.py.
+
+- Constraint / dispatch layer:
+  - Forecasts are aggregated to zone-level demand in src/operational.py.
+  - A synthetic generator fleet is created in create_generator_fleet().
+  - Dispatch is greedy: schedule cheapest generators first until forecast demand is met.
+  - Then compare scheduled generation to true load.
+  - Under-generation and over-generation are soft penalties, not hard corrections to predictions.
+
+- Constraint parameters:
+  - Under-generation penalty: 500 dollars/MWh.
+  - Over-generation penalty: 50 dollars/MWh.
+  - Synthetic fleet:
+    - cheap_base: 35% of max load at 25 dollars/MWh.
+    - mid_cost: 35% at 50 dollars/MWh.
+    - high_cost: 35% at 85 dollars/MWh.
+    - peaker: 25% at 150 dollars/MWh.
+  - Evidence: src/constraints.py.
+
+- How methods connect:
+  - src/run.py loads data, creates features, trains forecasts, builds prediction rows, computes metrics, aggregates to zones, dispatches generation, computes operational metrics, and saves plots/tables.
+
+### 4.2 Training Procedure
+
+- Training script:
+  - src/run.py.
+  - Command from README.md: .venv/bin/python -u src/run.py.
+
+- Target variable:
+  - target_load_mw, the same zone/load-area load at t + 24 hours.
+
+- Training objective:
+  - OLS/Ridge/Lasso minimize squared-error-style linear objectives, with Ridge/Lasso regularization.
+  - Neural networks minimize squared error on residual targets through scikit-learn MLPRegressor.
+
+- Optimizers / solvers:
+  - OLS: numpy least squares.
+  - Ridge: linear solve.
+  - Lasso: custom coordinate descent.
+  - Neural network: Adam via sklearn.neural_network.MLPRegressor.
+
+- Hyperparameters:
+  - Ridge alpha grid: 0.01, 0.1, 1.0, 10.0, 100.0.
+  - Lasso alpha grid: 0.001, 0.01, 0.1, 1.0, 10.0, 100.0.
+  - MLP hidden layers: (64, 32).
+  - MLP alpha: 0.01.
+  - MLP learning_rate_init: 0.0001.
+  - MLP batch_size: 128.
+  - MLP max_iter: 600.
+  - MLP early_stopping: True with validation_fraction 0.10 and n_iter_no_change 10.
+  - MLP random_state: 42.
+
+- Hyperparameter selection:
+  - Ridge and Lasso alphas selected by validation RMSE in tune_ridge() and tune_lasso().
+  - Saved validation files:
+    - results/metrics/pre_constraint_layer_ridge_validation_results.csv.
+    - results/metrics/pre_constraint_layer_lasso_validation_results.csv.
+  - Best Ridge alpha in saved results: 0.01.
+  - Best Lasso alpha in saved results: 0.1.
+  - MLP hyperparameters are fixed manually; no neural-network tuning grid is present.
+
+- Cross-validation:
+  - No k-fold cross-validation.
+  - Uses chronological train/validation/test split per zone/load-area.
+
+- Reproducibility:
+  - Main command is documented in README.md.
+  - Neural network random seed is set to 42.
+  - The repo includes data files and saved outputs.
+  - Full reproducibility is limited because data source citations/download instructions are not included.
+
+## 5. Experiments / Results / Discussion
+
+### 5.1 Evaluation Metrics
+
+- Primary forecast metrics:
+  - MAE.
+  - RMSE.
+  - MAPE.
+  - Bias.
+  - Evidence: src/evaluate.py and results/metrics/pre_constraint_layer_forecast_metrics.csv.
+
+- Why appropriate:
+  - MAE gives average absolute MW error.
+  - RMSE penalizes large errors more strongly.
+  - MAPE gives percent error, useful across load areas with different scales, though it can behave badly for very small loads such as OVEC.
+  - Bias shows systematic over- or under-prediction.
+
+- Secondary / subgroup metrics:
+  - Metrics by model, zone, and load area.
+  - Mean absolute error, mean error, and RMSE by target hour.
+  - Evidence: make_metrics_by_load_area() and make_error_by_hour() in src/evaluate.py.
+
+- Operational metrics:
+  - Feasible/infeasible hours.
+  - Under-generation and over-generation rates.
+  - Total under-generation and over-generation MWh.
+  - Base generator cost.
+  - Penalty cost.
+  - Total operational cost.
+  - Constraint regret.
+  - Zone error after dispatch.
+  - Evidence: make_post_constraint_metrics() in src/constraints.py.
+
+### 5.2 Experiments
+
+- Models compared:
+  - Persistence.
+  - OLS.
+  - Neural Network.
+  - Neural Network + Weather.
+  - Ridge.
+  - Lasso.
+  - Evidence: src/run.py and saved prediction/metric CSVs.
+
+- Hyperparameter experiments:
+  - Ridge alpha validation grid.
+  - Lasso alpha validation grid.
+  - Not found in repo: neural-network hyperparameter sweep.
+
+- Ablation study:
+  - Partial ablation exists: base NN vs NN + Weather.
+  - Not found in repo: systematic feature ablations for lags, weather, zones, or rolling features.
+
+- Sensitivity tests:
+  - Not found in repo.
+  - No sensitivity over dispatch penalty values, fleet sizing, random seeds, or forecast horizon.
+
+- Stress tests / edge cases:
+  - Not found in repo, beyond validation checks for chronological split and dispatch cost identities.
+
+- Train/validation/test reporting:
+  - Validation RMSE is reported for Ridge and Lasso alpha selection.
+  - Test metrics are reported for all models.
+  - Not found in repo: train metrics for all models or validation metrics for neural networks.
+
+- Experiments repeated across seeds / folds:
+  - Not found in repo.
+
+### 5.3 Results
+
+- Forecast results from results/metrics/pre_constraint_layer_forecast_metrics.csv:
+  - Persistence: MAE 235.361, RMSE 434.434, MAPE 7.694%, Bias -0.546.
+  - OLS: MAE 250.260, RMSE 404.006, MAPE 34.996%, Bias 111.262.
+  - Neural Network: MAE 245.434, RMSE 418.919, MAPE 9.763%, Bias 142.037.
+  - Neural Network + Weather: MAE 281.423, RMSE 463.516, MAPE 9.693%, Bias 121.690.
+  - Ridge: MAE 250.260, RMSE 404.005, MAPE 34.996%, Bias 111.259.
+  - Lasso: MAE 249.018, RMSE 403.082, MAPE 34.886%, Bias 106.671.
+
+- Best forecast model by metric:
+  - Best MAE: Persistence.
+  - Best RMSE: Lasso.
+  - Best MAPE: Persistence.
+  - Lowest absolute bias: Persistence.
+
+- Post-dispatch results from results/metrics/pre_post_constraint_layer_summary.csv:
+  - Lowest total operational cost: Neural Network, about 2.154B dollars.
+  - Lowest total constraint regret: Neural Network, about 513.553M dollars.
+  - Persistence has lower forecast MAE/MAPE but higher total operational cost, about 2.477B dollars.
+  - Weather NN performs worse than base NN in both forecast metrics and operational metrics in the saved run.
+
+- Improvement examples:
+  - Lasso improves RMSE over Persistence by about 31.35 MW.
+  - Persistence improves MAE over Lasso by about 13.66 MW.
+  - Base NN reduces total operational cost vs Persistence by about 322.56M dollars in the synthetic dispatch setup.
+
+- Results support:
+  - The repo supports the claim that forecast accuracy and dispatch cost can rank models differently.
+  - The repo does not support the claim that weather always improves the NN; saved results show the opposite for this setup.
+
+- Missing / unclear:
+  - Neural network convergence warnings or training logs are not saved in results.
+  - No repeated seed runs, so NN result stability is unclear.
+  - No external baselines such as gradient boosting, random forest, or modern sequence models.
+
+### 5.4 Discussion and Error Analysis
+
+- Meaning of results:
+  - Persistence is a strong baseline for hourly load because current load is highly informative.
+  - Lasso/Ridge improve RMSE but have much worse MAPE, likely affected by small load areas and systematic positive bias.
+  - Base NN has worse RMSE than Lasso but better post-dispatch cost because its bias/shape leads to fewer expensive under-generation penalties.
+
+- Why best methods likely worked:
+  - Persistence works because load has strong short-term autocorrelation.
+  - Lasso/Ridge can use calendar and lag features to reduce large squared errors.
+  - Base NN can model nonlinear residual adjustments and appears operationally useful under the synthetic penalty structure.
+
+- Why weaker methods failed:
+  - Weather NN may be using too generic a weather signal for all zones, or the MLP hyperparameters may not be tuned.
+  - Linear OLS/Ridge/Lasso show high MAPE because some load areas have small denominators and because the models have positive bias.
+
+- Overfitting / underfitting:
+  - Not enough evidence in repo to conclude strongly.
+  - Missing train metrics and NN validation curves.
+  - Neural network max-iteration convergence behavior was discussed in conversation but is not stored as a result artifact.
+
+- Error concentrations:
+  - results/metrics/pre_constraint_layer_error_by_hour.csv shows errors by target hour.
+  - results/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv shows errors by zone/load area.
+  - OVEC has very high MAPE for linear models, likely because its true load values are small.
+
+- Constraint calibration:
+  - Constraints are useful for relative comparison, but synthetic.
+  - Under-generation penalty is 10 times over-generation penalty, so positively biased forecasts may look operationally better even if forecast metrics are worse.
+  - Real PJM generator constraints, ramping, reserves, unit commitment, outages, and network limits are not modeled.
+
+- Tradeoffs:
+  - Accuracy vs cost: best RMSE is Lasso, best synthetic dispatch cost is base NN, best MAE/MAPE is Persistence.
+  - Interpretability vs flexibility: linear models are more interpretable; NN is less interpretable.
+  - Runtime vs model complexity: persistence and linear models are fast; MLP training is slower.
+
+### 5.5 Visualizations and Tables
+
+- Existing tables:
+  - results/metrics/pre_constraint_layer_forecast_metrics.csv: overall forecast metrics.
+  - results/metrics/pre_constraint_layer_forecast_metrics_by_load_area.csv: subgroup forecast metrics.
+  - results/metrics/pre_constraint_layer_error_by_hour.csv: hourly error profile.
+  - results/metrics/pre_constraint_layer_ridge_validation_results.csv and lasso_validation_results.csv: alpha tuning.
+  - results/metrics/post_constraint_layer_dispatch_metrics.csv: dispatch outcomes.
+  - results/metrics/pre_post_constraint_layer_summary.csv: combined forecast and dispatch summary.
+
+- Existing plots:
+  - True vs predicted by load area: results/figures/pre_constraint_load_area/.
+  - Average true vs predicted: results/figures/pre_constraint_load_area/pre_constraint_layer_true_vs_predicted_average_load_area.png.
+  - RMSE/MAPE bars and error by hour: results/figures/pre_constraint_error/.
+  - Post-constraint plots: results/figures/post_constraint_analysis/.
+
+- What they show:
+  - Forecast time-series behavior.
+  - Hourly error patterns.
+  - Model-level RMSE/MAPE.
+  - Operational cost, penalty cost, under/over-generation, and scheduled vs true load.
+
+- Clarity:
+  - Plot labels include MW and model names.
+  - Recent src/plots.py supports NN and weather NN lines.
+  - Longer model labels may crowd bar charts, but x-axis labels are rotated.
+
+- Missing visualizations:
+  - Residual histograms or error distributions.
+  - Scatter predicted vs actual by model.
+  - Train/validation learning curves for neural networks.
+  - Feature coefficient plots for linear models.
+  - Weather-feature sensitivity plots.
+  - Dispatch cost vs forecast bias plots.
+
+## 6. Conclusion / Future Work
+
+### 6.1 Conclusion
+
+- What project accomplished:
+  - Built a reproducible one-year, multi-zone PJM load forecasting pipeline.
+  - Added base and weather residual neural networks.
+  - Added a synthetic dispatch evaluation layer to connect forecasts to operational consequences.
+
+- Strongest result:
+  - Different metrics produce different winners.
+  - Persistence has best MAE/MAPE.
+  - Lasso has best RMSE.
+  - Base Neural Network has best synthetic post-dispatch total cost and constraint regret.
+
+- Main lesson:
+  - Forecast accuracy alone is not enough when forecasts feed operational decisions.
+  - Bias and under/over-generation penalties can make a forecast with worse RMSE preferable under a cost model.
+
+- Did repo solve original problem?
+  - Partly yes: it forecasts 24-hour-ahead load and evaluates dispatch consequences using saved outputs.
+  - It does not solve full real-world grid dispatch because the dispatch layer is synthetic.
+
+- Supported claims:
+  - The repo supports comparisons among six forecast models.
+  - It supports forecast-to-dispatch tradeoff analysis under its synthetic assumptions.
+
+- Unsupported or weakly supported claims:
+  - Real PJM operational cost claims are not supported.
+  - Weather benefits are not supported by current results.
+  - Neural-network superiority is not supported by forecast metrics, only by synthetic dispatch metrics in the saved run.
+
+### 6.2 Future Work
+
+- Data improvements:
+  - Add explicit citations/download instructions for PJM load and weather data.
+  - Use zone-specific weather instead of one Kentucky weather series.
+  - Add holidays, major events, daylight-saving indicators, and longer historical coverage.
+
+- Modeling improvements:
+  - Tune neural-network learning rate, max_iter, regularization, hidden layers, and residual target scaling.
+  - Add stronger baselines: gradient boosting, random forest, elastic net, SARIMA/Prophet-style models, sequence models.
+  - Add 168-hour lag and 168-hour rolling features.
+  - Train per-zone or per-load-area models and compare with shared model.
+
+- Evaluation improvements:
+  - Save train/validation/test metrics for every model.
+  - Repeat neural-network runs across seeds.
+  - Add confidence intervals or bootstrap comparisons.
+  - Add error distributions and peak-hour metrics.
+
+- Constraint / dispatch improvements:
+  - Use realistic generator fleet data, fuel costs, ramp constraints, reserve constraints, and transmission constraints.
+  - Test sensitivity to under/over-generation penalty values.
+  - Compare dispatch outputs under multiple operating scenarios.
+
+- Engineering improvements:
+  - Add tests for data cleaning, feature leakage, split correctness, and dispatch identities.
+  - Add command-line arguments for data paths, output paths, and model selection.
+  - Store model artifacts and training logs.
+  - Clean stale documents that describe older AEP-only or milestone versions.
+
+## 7. Contributions
+
+### 7.1 Contributions
+
+- Team members:
+  - Not found in repo.
+
+- Individual contributions:
+  - Not found in repo.
+
+- Separation by data/modeling/experiments/writing/infrastructure:
+  - Not found in repo.
+
+- What can be inferred from files, without assigning people:
+  - Data pipeline: src/data.py.
+  - Feature engineering: src/features.py.
+  - Models: src/models.py.
+  - Splitting: src/split.py.
+  - Evaluation: src/evaluate.py.
+  - Dispatch layer: src/constraints.py and src/operational.py.
+  - Plotting: src/plots.py.
+  - End-to-end run orchestration: src/run.py.
+
+## 8. Citations and References
+
+### 8.1 Citations and References
+
+- Papers cited:
+  - Not found in repo.
+
+- Dataset sources cited:
+  - PJM is named, but a complete data citation or URL is not found in repo.
+  - Weather source is not cited in repo.
+
+- Libraries / tools:
+  - requirements.txt lists pandas, numpy, scikit-learn, and matplotlib.
+  - scikit-learn is used for MLPRegressor and metric helpers.
+  - These are not cited formally.
+
+- Algorithm citations:
+  - Not found in repo for OLS, Ridge, Lasso, MLP, persistence, or greedy dispatch.
+
+- Formula / metric citations:
+  - Not found in repo.
+  - Metric formulas are implemented directly in src/evaluate.py.
+
+- Citation completeness:
+  - Incomplete.
+  - A final report should cite PJM data, weather data provider, scikit-learn, short-term load forecasting literature, and dispatch/economic dispatch references.
+
+## Final Checklist for the Repo Analyzer
+
+- Major claims are supported by repo files or saved outputs:
+  - Yes, except where explicitly marked Not found in repo.
+
+- Every required subcategory is answered:
+  - Yes.
+
+- Missing information is labeled:
+  - Yes.
+
+- Inputs and outputs are stated:
+  - Yes.
+
+- Dataset, features, methods, metrics, experiments, and results are separated:
+  - Yes.
+
+- Repo evidence is included:
+  - Yes: README.md, repo_explanation.md, src/*.py, requirements.txt, data files, and results/* outputs.
+
+- Main caveat:
+  - Several docs in the repo, especially final_project_overview.txt and branch_summary.md, describe older or branch-specific versions. The current runnable pipeline is best represented by README.md and src/run.py.
