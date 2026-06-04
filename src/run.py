@@ -222,6 +222,7 @@ def main() -> None:
     plot_error_by_hour(error_by_hour, pre_constraint_error_dir / "pre_constraint_layer_error_by_hour.png")
     plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_rmse_by_model.png", metric="rmse")
     plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_mape_by_model.png", metric="mape")
+    plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_bias_by_model.png", metric="bias")
 
     print("Aggregating load-area forecasts to zones...")
     pre_constraint_zone_predictions = aggregate_predictions_to_zone(predictions)
