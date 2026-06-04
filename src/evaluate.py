@@ -31,7 +31,7 @@ def bias(y_true, y_pred) -> float:
 
 
 def compute_metrics(y_true, y_pred) -> dict:
-    """Return standard milestone metrics."""
+    """Return standard forecast metrics."""
     return {
         "mae": mae(y_true, y_pred),
         "rmse": rmse(y_true, y_pred),

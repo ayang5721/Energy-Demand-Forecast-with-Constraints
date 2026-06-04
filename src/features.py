@@ -1,4 +1,4 @@
-"""Feature engineering for the 24-hour-ahead milestone forecast."""
+"""Feature engineering for the 24-hour-ahead load forecast."""
 
 from __future__ import annotations
 
@@ -24,9 +24,17 @@ FEATURE_COLUMNS = [
     "rolling_mean_24",
     "rolling_std_24",
 ]
+WEATHER_COLUMNS = [
+    "temperature_c",
+    "humidity_pct",
+    "temperature_lag_24",
+    "humidity_lag_24",
+]
+WEATHER_FEATURE_COLUMNS = FEATURE_COLUMNS + WEATHER_COLUMNS
 FORECAST_HORIZON = 24
 LOAD_LAGS = [1, 24, 48]
 ROLLING_WINDOWS = [24]
+WEATHER_LAG_HOURS = 24
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -92,15 +100,37 @@ def add_target(df: pd.DataFrame, horizon: int = 24) -> pd.DataFrame:
     return out
 
 
-def make_feature_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    """Run the full milestone feature pipeline and drop incomplete rows."""
+def add_weather_features(df: pd.DataFrame, weather_df: pd.DataFrame) -> pd.DataFrame:
+    """Add issue-time weather and 24-hour weather lags without target-time weather."""
+    out = df.copy()
+    weather = weather_df[["timestamp_utc", "temperature_c", "humidity_pct"]].copy()
+
+    out = out.merge(weather, on="timestamp_utc", how="left")
+
+    lagged_weather = weather.rename(
+        columns={
+            "timestamp_utc": "weather_lag_timestamp_utc",
+            "temperature_c": "temperature_lag_24",
+            "humidity_pct": "humidity_lag_24",
+        }
+    )
+    out["weather_lag_timestamp_utc"] = out["timestamp_utc"] - pd.Timedelta(hours=WEATHER_LAG_HOURS)
+    out = out.merge(lagged_weather, on="weather_lag_timestamp_utc", how="left")
+    out = out.drop(columns=["weather_lag_timestamp_utc"])
+    return out
+
+
+def make_feature_dataset(df: pd.DataFrame, weather_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Run the full feature pipeline and drop incomplete rows."""
     out = add_time_features(df)
     out = add_cyclical_features(out)
     out = add_lag_features(out, LOAD_LAGS)
     out = add_rolling_features(out, ROLLING_WINDOWS)
+    if weather_df is not None:
+        out = add_weather_features(out, weather_df)
     out = add_target(out, horizon=FORECAST_HORIZON)
 
-    required = FEATURE_COLUMNS + [
+    required = (WEATHER_FEATURE_COLUMNS if weather_df is not None else FEATURE_COLUMNS) + [
         "timestamp_utc",
         "timestamp_ept",
         "target_timestamp_utc",
