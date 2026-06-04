@@ -1,5 +1,3 @@
-"""Run the load forecasting and constrained dispatch pipeline."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -55,8 +53,7 @@ RESULTS_DIR = "results"
 
 
 def _make_output_dirs(base_dir: Path) -> dict[str, Path]:
-    """Create and return output directories."""
-    dirs = {
+    dirs ={
         "metrics": base_dir / "metrics",
         "predictions": base_dir / "predictions",
         "figures": base_dir / "figures",
@@ -67,14 +64,13 @@ def _make_output_dirs(base_dir: Path) -> dict[str, Path]:
 
 
 def _build_prediction_frame(metadata: pd.DataFrame, y_pred, model_name: str) -> pd.DataFrame:
-    """Build long-format prediction rows for one model."""
     out = metadata.copy()
     out["model"] = model_name
     out["true_load_mw"] = out["target_load_mw"]
     out["predicted_load_mw"] = y_pred
     out["error_mw"] = out["predicted_load_mw"] - out["true_load_mw"]
     out["abs_error_mw"] = out["error_mw"].abs()
-    out["hour"] = out["target_timestamp_ept"].dt.hour
+    out["hour"] =out["target_timestamp_ept"].dt.hour
     out["day_of_week"] = out["target_timestamp_ept"].dt.dayofweek
     out["month"] = out["target_timestamp_ept"].dt.month
     columns = [
@@ -97,12 +93,10 @@ def _build_prediction_frame(metadata: pd.DataFrame, y_pred, model_name: str) -> 
 
 
 def _safe_filename(value: str) -> str:
-    """Return a filesystem-friendly label."""
     return "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in str(value))
 
 
 def main() -> None:
-    """Run the full pipeline and save metrics, predictions, and figures."""
     results_dir = Path(RESULTS_DIR)
     dirs = _make_output_dirs(results_dir)
 
@@ -131,7 +125,7 @@ def main() -> None:
 
     print("Training OLS...")
     ols_model = train_ols(X_train, y_train, CATEGORICAL_COLUMNS, NUMERIC_COLUMNS)
-    ols_test_pred = ols_model.predict(X_test)
+    ols_test_pred= ols_model.predict(X_test)
     print("OLS complete.")
 
     print("Training Neural Network...")
@@ -169,7 +163,7 @@ def main() -> None:
         y_train,
         X_val,
         y_val,
-        [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+        [0.001, 0.01, 0.1, 1.0,10.0, 100.0],
         CATEGORICAL_COLUMNS,
         NUMERIC_COLUMNS,
     )
@@ -177,7 +171,7 @@ def main() -> None:
     lasso_val_results.to_csv(dirs["metrics"] / "pre_constraint_layer_lasso_validation_results.csv", index=False)
     print(f"Lasso complete. Best alpha: {best_lasso_alpha}")
 
-    predictions = pd.concat(
+    predictions= pd.concat(
         [
             _build_prediction_frame(test_metadata, persistence_test_pred, "Persistence"),
             _build_prediction_frame(test_metadata, ols_test_pred, "OLS"),
@@ -217,11 +211,11 @@ def main() -> None:
         )
     plot_true_vs_predicted_average(
         predictions,
-        pre_constraint_load_area_dir / "pre_constraint_layer_true_vs_predicted_average_load_area.png",
+        pre_constraint_load_area_dir /"pre_constraint_layer_true_vs_predicted_average_load_area.png",
     )
     plot_error_by_hour(error_by_hour, pre_constraint_error_dir / "pre_constraint_layer_error_by_hour.png")
     plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_rmse_by_model.png", metric="rmse")
-    plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_mape_by_model.png", metric="mape")
+    plot_forecast_metrics_bar(metrics, pre_constraint_error_dir/ "pre_constraint_layer_mape_by_model.png", metric="mape")
     plot_forecast_metrics_bar(metrics, pre_constraint_error_dir / "pre_constraint_layer_bias_by_model.png", metric="bias")
 
     print("Aggregating load-area forecasts to zones...")
@@ -276,7 +270,7 @@ def main() -> None:
     )
     pre_post_summary = pre_post_summary[
         [
-            "model",
+            "model", 
             "pre_constraint_layer_rmse",
             "pre_constraint_layer_mae",
             "pre_constraint_layer_mape",
@@ -294,7 +288,7 @@ def main() -> None:
     pre_post_summary.to_csv(dirs["metrics"] / "pre_post_constraint_layer_summary.csv", index=False)
 
     print("Generating post-constraint plots...")
-    plot_post_constraint_base_generator_cost(
+    plot_post_constraint_base_generator_cost (
         post_constraint_metrics,
         post_constraint_analysis_dir / "post_constraint_layer_base_generator_cost_by_model.png",
     )
@@ -304,7 +298,7 @@ def main() -> None:
     )
     plot_post_constraint_over_generation(
         post_constraint_metrics,
-        post_constraint_analysis_dir / "post_constraint_layer_over_generation_by_model.png",
+        post_constraint_analysis_dir/ "post_constraint_layer_over_generation_by_model.png",
     )
     plot_post_constraint_penalty_cost(
         post_constraint_metrics,
@@ -315,7 +309,7 @@ def main() -> None:
         post_constraint_analysis_dir / "post_constraint_layer_penalty_cost_stacked_by_model.png",
     )
     plot_post_constraint_total_operational_cost(
-        post_constraint_metrics,
+        post_constraint_metrics ,
         post_constraint_analysis_dir / "post_constraint_layer_total_operational_cost_by_model.png",
     )
     plot_post_constraint_constraint_regret(
@@ -339,9 +333,9 @@ def main() -> None:
     print(post_constraint_metrics.to_string(index=False))
     print("\nSaved outputs")
     print(f"Metrics: {dirs['metrics']}")
-    print(f"Predictions: {dirs['predictions']}")
+    print(f"Predictions:{dirs['predictions']}")
     print(f"Figures: {dirs['figures']}")
 
 
-if __name__ == "__main__":
+if __name__ =="__main__":
     main()

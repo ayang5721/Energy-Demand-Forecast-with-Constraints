@@ -1,17 +1,13 @@
-"""Data loading, cleaning, and validation for PJM load data."""
-
 from __future__ import annotations
 
 import pandas as pd
 
 
 def load_raw_data(path: str) -> pd.DataFrame:
-    """Read the raw PJM CSV from disk."""
     return pd.read_csv(path)
 
 
 def load_weather_data(path: str) -> pd.DataFrame:
-    """Read Kentucky hourly weather data and return normalized timestamp/features."""
     weather = pd.read_csv(path, skiprows=3)
     weather = weather.rename(
         columns={
@@ -34,7 +30,6 @@ def filter_weather_to_load_range(
     load_df: pd.DataFrame,
     lag_hours: int = 24,
 ) -> pd.DataFrame:
-    """Keep weather rows needed for the load-data period and validate coverage."""
     min_load_timestamp = load_df["timestamp_utc"].min()
     max_load_timestamp = load_df["timestamp_utc"].max()
     min_weather_timestamp = min_load_timestamp - pd.Timedelta(hours=lag_hours)
@@ -61,7 +56,6 @@ def filter_weather_to_load_range(
 
 
 def _to_bool(series: pd.Series) -> pd.Series:
-    """Convert common boolean-like values to pandas booleans."""
     if pd.api.types.is_bool_dtype(series):
         return series
     return (
@@ -73,7 +67,6 @@ def _to_bool(series: pd.Series) -> pd.Series:
 
 
 def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean raw PJM load data and return standard modeling columns."""
     cleaned = df.copy()
     cleaned.columns = cleaned.columns.str.strip().str.lower()
 
@@ -113,7 +106,6 @@ def clean_pjm_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_clean_data(df: pd.DataFrame) -> dict:
-    """Return and print a validation summary for cleaned PJM data."""
     duplicate_count = int(df.duplicated(subset=["timestamp_utc", "zone", "load_area"]).sum())
     summary = {
         "n_rows": int(len(df)),

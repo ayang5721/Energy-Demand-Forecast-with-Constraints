@@ -1,5 +1,3 @@
-"""Feature engineering for the 24-hour-ahead load forecast."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -38,7 +36,6 @@ WEATHER_LAG_HOURS = 24
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add hour, weekday, month, and weekend indicators from EPT timestamps."""
     out = df.copy()
     out["hour"] = out["timestamp_ept"].dt.hour
     out["day_of_week"] = out["timestamp_ept"].dt.dayofweek
@@ -48,7 +45,6 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add cyclical encodings for hour of day and day of week."""
     out = df.copy()
     out["sin_hour"] = np.sin(2 * np.pi * out["hour"] / 24)
     out["cos_hour"] = np.cos(2 * np.pi * out["hour"] / 24)
@@ -58,7 +54,6 @@ def add_cyclical_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_lag_features(df: pd.DataFrame, lags: list[int]) -> pd.DataFrame:
-    """Add timestamp-exact hourly lag features for each zone/load-area series."""
     out = df.copy()
     lag_lookup = out[["zone", "load_area", "timestamp_utc", "load_mw"]].copy()
     for lag in lags:
@@ -75,7 +70,6 @@ def add_lag_features(df: pd.DataFrame, lags: list[int]) -> pd.DataFrame:
 
 
 def add_rolling_features(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
-    """Add rolling mean and standard deviation features by zone/load-area series."""
     out = df.copy().sort_values(["zone", "load_area", "timestamp_utc"])
     grouped = out.groupby(["zone", "load_area"], sort=False)["load_mw"]
     for window in windows:
@@ -86,7 +80,6 @@ def add_rolling_features(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
 
 
 def add_target(df: pd.DataFrame, horizon: int = 24) -> pd.DataFrame:
-    """Add same-zone/load-area target values at an exact hourly forecast horizon."""
     out = df.copy()
     target_lookup = out[["zone", "load_area", "timestamp_utc", "timestamp_ept", "load_mw"]].rename(
         columns={
@@ -101,7 +94,6 @@ def add_target(df: pd.DataFrame, horizon: int = 24) -> pd.DataFrame:
 
 
 def add_weather_features(df: pd.DataFrame, weather_df: pd.DataFrame) -> pd.DataFrame:
-    """Add issue-time weather and 24-hour weather lags without target-time weather."""
     out = df.copy()
     weather = weather_df[["timestamp_utc", "temperature_c", "humidity_pct"]].copy()
 
@@ -121,7 +113,6 @@ def add_weather_features(df: pd.DataFrame, weather_df: pd.DataFrame) -> pd.DataF
 
 
 def make_feature_dataset(df: pd.DataFrame, weather_df: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Run the full feature pipeline and drop incomplete rows."""
     out = add_time_features(df)
     out = add_cyclical_features(out)
     out = add_lag_features(out, LOAD_LAGS)

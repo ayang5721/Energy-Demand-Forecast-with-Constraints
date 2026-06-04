@@ -1,5 +1,3 @@
-"""Chronological train, validation, and test splitting utilities."""
-
 from __future__ import annotations
 
 import pandas as pd
@@ -20,7 +18,6 @@ METADATA_COLUMNS = [
 
 
 def time_based_split(df: pd.DataFrame, train_frac: float = 0.70, val_frac: float = 0.15):
-    """Split each zone/load-area series chronologically."""
     train_parts = []
     val_parts = []
     test_parts = []
@@ -46,7 +43,6 @@ def time_based_split(df: pd.DataFrame, train_frac: float = 0.70, val_frac: float
 
 
 def get_feature_target_metadata(df: pd.DataFrame, feature_columns=None):
-    """Return X, y, and metadata dataframes for modeling."""
     if feature_columns is None:
         feature_columns = FEATURE_COLUMNS
     X = df[feature_columns].copy()
@@ -56,7 +52,6 @@ def get_feature_target_metadata(df: pd.DataFrame, feature_columns=None):
 
 
 def validate_split(train_df: pd.DataFrame, val_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
-    """Validate chronological ordering within each zone/load-area split."""
     print("\nSplit validation")
     print(f"Train rows: {len(train_df)}, timestamps: {train_df['timestamp_utc'].nunique()}")
     print(f"Validation rows: {len(val_df)}, timestamps: {val_df['timestamp_utc'].nunique()}")

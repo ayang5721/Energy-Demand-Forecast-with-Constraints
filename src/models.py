@@ -1,5 +1,3 @@
-"""Forecasting models."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -34,7 +32,6 @@ WEATHER_NUMERIC_COLUMNS = NUMERIC_COLUMNS + [
 
 
 def _soft_threshold(value: float, penalty: float) -> float:
-    """Return the Lasso soft-thresholded coefficient update."""
     if value > penalty:
         return value - penalty
     if value < -penalty:
@@ -43,8 +40,6 @@ def _soft_threshold(value: float, penalty: float) -> float:
 
 
 class ModelPreprocessor:
-    """One-hot encode categorical columns and standardize numeric columns."""
-
     def __init__(self, categorical_cols, numeric_cols):
         self.categorical_cols = list(categorical_cols)
         self.numeric_cols = list(numeric_cols)
@@ -78,8 +73,6 @@ class ModelPreprocessor:
 
 
 class LinearModel:
-    """Linear regression model with explicit OLS, Ridge, and Lasso training."""
-
     def __init__(
         self,
         model_type: str,
@@ -173,8 +166,6 @@ class LinearModel:
 
 
 class ResidualNeuralNetworkModel:
-    """Explicit NumPy residual MLP anchored to the 24-hour persistence forecast."""
-
     def __init__(
         self,
         categorical_cols,
@@ -369,41 +360,34 @@ class ResidualNeuralNetworkModel:
 
 
 def get_preprocessor(categorical_cols, numeric_cols) -> ModelPreprocessor:
-    """Return the project preprocessor."""
     return ModelPreprocessor(categorical_cols, numeric_cols)
 
 
 def predict_persistence(X: pd.DataFrame) -> np.ndarray:
-    """Return current load as the 24-hour-ahead persistence forecast."""
     return X["load_mw"].to_numpy()
 
 
 def train_ols(X_train, y_train, categorical_cols, numeric_cols) -> LinearModel:
-    """Train ordinary least squares with the normal equation."""
     model = LinearModel("ols", categorical_cols, numeric_cols)
     return model.fit(X_train, y_train)
 
 
 def train_ridge(X_train, y_train, alpha, categorical_cols, numeric_cols) -> LinearModel:
-    """Train Ridge regression with explicit L2-regularized least squares."""
     model = LinearModel("ridge", categorical_cols, numeric_cols, alpha=alpha)
     return model.fit(X_train, y_train)
 
 
 def train_lasso(X_train, y_train, alpha, categorical_cols, numeric_cols) -> LinearModel:
-    """Train Lasso regression with explicit coordinate descent."""
     model = LinearModel("lasso", categorical_cols, numeric_cols, alpha=alpha, max_iter=500)
     return model.fit(X_train, y_train)
 
 
 def train_neural_network(X_train, y_train, categorical_cols, numeric_cols) -> ResidualNeuralNetworkModel:
-    """Train the residual MLP neural network."""
     model = ResidualNeuralNetworkModel(categorical_cols, numeric_cols)
     return model.fit(X_train, y_train)
 
 
 def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
-    """Tune Ridge alpha by validation RMSE and return the best fitted model."""
     rows = []
     best_model = None
     best_alpha = None
@@ -421,7 +405,6 @@ def tune_ridge(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, num
 
 
 def tune_lasso(X_train, y_train, X_val, y_val, alpha_grid, categorical_cols, numeric_cols):
-    """Tune Lasso alpha by validation RMSE and return the best fitted model."""
     rows = []
     best_model = None
     best_alpha = None

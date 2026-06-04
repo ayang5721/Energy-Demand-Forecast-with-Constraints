@@ -1,5 +1,3 @@
-"""Hard-constraint dispatch layer for zone-level forecasts."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -12,7 +10,6 @@ OVER_GENERATION_PENALTY_PER_MWH = 50.0
 
 
 def create_generator_fleet(max_zone_load_mw: float) -> pd.DataFrame:
-    """Create a synthetic generator fleet sized to observed peak zone load."""
     fleet = pd.DataFrame(
         [
             {"generator": "cheap_base", "max_mw": 0.35 * max_zone_load_mw, "cost_per_mwh": 25.0},
@@ -27,7 +24,6 @@ def create_generator_fleet(max_zone_load_mw: float) -> pd.DataFrame:
 
 
 def greedy_dispatch(demand_mw: float, generator_fleet: pd.DataFrame) -> dict:
-    """Dispatch generators from cheapest to most expensive to meet demand."""
     demand = max(0.0, float(demand_mw))
     remaining_demand = demand
     total_generation_mw = 0.0
@@ -57,7 +53,6 @@ def greedy_dispatch(demand_mw: float, generator_fleet: pd.DataFrame) -> dict:
 
 
 def _dispatch_many(demand_mw, generator_fleet: pd.DataFrame) -> dict:
-    """Vectorized greedy dispatch for many demand values."""
     demand = np.maximum(0.0, np.asarray(demand_mw, dtype=float))
     remaining_demand = demand.copy()
     total_generation_mw = np.zeros_like(demand)
@@ -87,7 +82,6 @@ def _dispatch_many(demand_mw, generator_fleet: pd.DataFrame) -> dict:
 
 
 def run_constrained_dispatch(zone_predictions_df: pd.DataFrame, generator_fleet: pd.DataFrame) -> pd.DataFrame:
-    """Run forecast and oracle dispatch for every model-hour zone forecast."""
     out = zone_predictions_df[
         [
             "target_timestamp_utc",
@@ -136,7 +130,6 @@ def run_constrained_dispatch(zone_predictions_df: pd.DataFrame, generator_fleet:
 
 
 def make_post_constraint_metrics(dispatch_df: pd.DataFrame) -> pd.DataFrame:
-    """Compute post-constraint operational metrics by model."""
     def metrics(group: pd.DataFrame) -> pd.Series:
         zone_error = group["scheduled_generation_mw"] - group["true_zone_load_mw"]
         total_base_generator_cost = group["base_generator_cost"].sum()
@@ -182,7 +175,6 @@ def make_post_constraint_metrics(dispatch_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def validate_constraint_costs(dispatch_df: pd.DataFrame, metrics_df: pd.DataFrame) -> None:
-    """Validate cost and regret identities for the constraint layer."""
     print("\nConstraint cost validation")
 
     assert np.allclose(dispatch_df["oracle_penalty_cost"], 0.0)
